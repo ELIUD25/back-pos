@@ -876,7 +876,7 @@ app.use((req, res, next) => {
 
 app.use(compression());
 
-a// In your server.js or app.js
+// In your server.js or app.js
 app.use(cors({
   origin: [
     'https://seridah-chemist.vercel.app',
@@ -890,7 +890,6 @@ app.use(cors({
 
 // Handle preflight requests
 app.options('*', cors());
-
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
