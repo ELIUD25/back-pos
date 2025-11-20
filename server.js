@@ -22,14 +22,13 @@ const PORT = process.env.PORT || 5001;
 
 
 // Update your connectDB function
-// MongoDB connection optimized for Vercel
 const connectDB = async () => {
   try {
     // If already connected, return
     if (mongoose.connection.readyState === 1) {
       console.log('✅ MongoDB already connected');
       serverStatus.services.database = true;
-      return;
+      return true;
     }
 
     const connectionString = process.env.MONGODB_URI;
@@ -37,14 +36,14 @@ const connectDB = async () => {
     if (!connectionString) {
       console.error('❌ MONGODB_URI is not set in environment variables');
       serverStatus.services.database = false;
-      return;
+      return false;
     }
 
     console.log('🔗 Connecting to MongoDB on Vercel...');
     
     // Vercel-optimized connection options
     const options = {
-      serverSelectionTimeoutMS: 10000, // Increased timeout
+      serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
       bufferCommands: false,
       bufferMaxEntries: 0,
@@ -54,17 +53,49 @@ const connectDB = async () => {
       w: 'majority'
     };
 
+    // ACTUALLY WAIT for connection to complete
     await mongoose.connect(connectionString, options);
-    console.log('✅ MongoDB connected successfully');
-    serverStatus.services.database = true;
+    
+    // Only mark as connected when readyState is actually 1
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ MongoDB connected successfully');
+      serverStatus.services.database = true;
+      return true;
+    } else {
+      console.log('❌ MongoDB connection incomplete');
+      serverStatus.services.database = false;
+      return false;
+    }
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
     serverStatus.services.database = false;
-    // Don't throw in Vercel environment
-    console.log('🟡 Continuing with limited functionality');
+    return false;
   }
 };
+
+// Connection event handlers for accurate state tracking
+mongoose.connection.on('connected', () => {
+  console.log('✅ MongoDB connected event fired');
+  serverStatus.services.database = true;
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ MongoDB disconnected event fired');
+  serverStatus.services.database = false;
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+  serverStatus.services.database = false;
+});
+
+mongoose.connection.on('connecting', () => {
+  console.log('🔄 MongoDB connecting...');
+  serverStatus.services.database = false;
+});
+
+
 
 
 
@@ -120,7 +151,7 @@ let serverStatus = {
 };
 
 // Enhanced initialization function
-// Enhanced initialization for Vercel
+
 const initializeServer = async () => {
   if (serverStatus.isInitializing || serverStatus.isInitialized) {
     console.log('🔄 Server initialization already in progress or completed');
@@ -135,18 +166,21 @@ const initializeServer = async () => {
   try {
     // Add timeout for Vercel
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Initialization timeout')), 10000);
+      setTimeout(() => reject(new Error('Initialization timeout')), 15000);
     });
 
     // Race between initialization and timeout
     await Promise.race([
       (async () => {
-        // Step 1: Database connection
+        // Step 1: Database connection (WAIT for it to complete)
         console.log('📦 Step 1: Connecting to database on Vercel...');
-        await connectDB();
-        serverStatus.services.database = true;
-
-        // Step 2: Create models
+        const dbConnected = await connectDB();
+        
+        if (!dbConnected) {
+          throw new Error('Database connection failed');
+        }
+        
+        // Step 2: Create models (only if DB is connected)
         console.log('📦 Step 2: Creating enhanced models...');
         models = createModels();
         serverStatus.services.models = true;
@@ -161,13 +195,15 @@ const initializeServer = async () => {
           serverStatus.services.email = false;
         });
 
-        // Step 4: Create default admin (non-blocking)
+        // Step 4: Create default admin (non-blocking, only if DB connected)
         console.log('📦 Step 4: Setting up default admin...');
-        createDefaultAdmin().then(() => {
-          console.log('✅ Default admin setup completed');
-        }).catch(error => {
-          console.log('⚠️ Default admin setup failed:', error.message);
-        });
+        if (dbConnected) {
+          createDefaultAdmin().then(() => {
+            console.log('✅ Default admin setup completed');
+          }).catch(error => {
+            console.log('⚠️ Default admin setup failed:', error.message);
+          });
+        }
 
         // Mark initialization as complete
         serverStatus.isInitialized = true;
@@ -183,7 +219,6 @@ const initializeServer = async () => {
     console.error('💥 Vercel server initialization failed:', error);
     serverStatus.isInitializing = false;
     serverStatus.isInitialized = false;
-    // Don't throw on Vercel - allow health check to still work
     console.log('🟡 Continuing with limited functionality');
   }
 };
@@ -1691,10 +1726,11 @@ async function handleCreditPayment(transactionData, res) {
 
 
 app.get('/api/health', async (req, res) => {
-  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  const dbReadyState = mongoose.connection.readyState;
+  const dbStatus = dbReadyState === 1 ? 'connected' : 'disconnected';
   const emailStatus = emailTransporter ? 'configured' : 'disabled';
   
-  // Enhanced status checking
+  // Enhanced status checking with real-time MongoDB state
   const healthStatus = {
     success: true,
     status: dbStatus === 'connected' ? 'healthy' : 'degraded',
@@ -1717,25 +1753,70 @@ app.get('/api/health', async (req, res) => {
       services: serverStatus.services
     },
     
-    // Add connection details for debugging
+    // Add detailed connection information
     connection: {
       mongodb: {
-        readyState: mongoose.connection.readyState,
+        readyState: dbReadyState,
+        readyStateText: getMongoDBStateText(dbReadyState),
         host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured'
       }
     }
   };
 
-  // If database is disconnected but we're still initializing, show appropriate status
-  if (dbStatus === 'disconnected' && serverStatus.isInitializing) {
-    healthStatus.status = 'initializing';
-    healthStatus.message = 'Server is initializing database connection';
-  } else if (dbStatus === 'disconnected') {
-    healthStatus.status = 'degraded';
-    healthStatus.message = 'Database connection failed - some features may be unavailable';
+  // Status messages based on actual state
+  if (dbReadyState === 0) {
+    healthStatus.status = 'disconnected';
+    healthStatus.message = 'Database disconnected - check MONGODB_URI and network connection';
+  } else if (dbReadyState === 2) {
+    healthStatus.status = 'connecting';
+    healthStatus.message = 'Database connection in progress';
+  } else if (dbReadyState === 1) {
+    healthStatus.status = 'healthy';
+    healthStatus.message = 'All systems operational';
+  } else if (dbReadyState === 3) {
+    healthStatus.status = 'disconnecting';
+    healthStatus.message = 'Database disconnecting';
   }
 
   res.json(healthStatus);
+});
+
+// Helper function to translate MongoDB readyState
+function getMongoDBStateText(readyState) {
+  const states = {
+    0: 'disconnected',
+    1: 'connected', 
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  return states[readyState] || 'unknown';
+}
+
+app.get('/api/debug/connection', async (req, res) => {
+  try {
+    // Test actual database operation
+    const testResult = await models.Shop.findOne().lean();
+    
+    res.json({
+      success: true,
+      mongooseState: mongoose.connection.readyState,
+      mongooseStateText: getMongoDBStateText(mongoose.connection.readyState),
+      databaseName: mongoose.connection.name,
+      host: mongoose.connection.host,
+      port: mongoose.connection.port,
+      testQuery: testResult ? 'success' : 'no data',
+      modelsInitialized: !!models.Shop,
+      serverStatus: serverStatus
+    });
+  } catch (error) {
+    res.json({
+      success: false,
+      mongooseState: mongoose.connection.readyState,
+      error: error.message,
+      modelsInitialized: !!models.Shop,
+      serverStatus: serverStatus
+    });
+  }
 });
 
 // Vercel-compatible health check
