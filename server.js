@@ -20,27 +20,60 @@ const PORT = process.env.PORT || 5001;
 
 // ==================== DATABASE CONNECTION ====================
 
+
+// Update your connectDB function
+// MongoDB connection optimized for Vercel
 const connectDB = async () => {
   try {
-    const connectionString = process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0';
+    const connectionString = process.env.MONGODB_URI;
     
+    if (!connectionString) {
+      console.error('❌ MONGODB_URI is not set in environment variables');
+      return;
+    }
+
+    // Check if we're already connected
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ MongoDB already connected');
+      return;
+    }
+
     console.log('🔗 Connecting to MongoDB...');
     
-    await mongoose.connect(connectionString, {
-      serverSelectionTimeoutMS: 15000,
+    // Connection options optimized for Vercel/serverless
+    const options = {
+      serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
-      maxPoolSize: 25,
-      minPoolSize: 5,
-      retryWrites: true
-    });
-    
+      maxPoolSize: 5,
+      minPoolSize: 1,
+      retryWrites: true,
+      bufferCommands: false,
+      bufferMaxEntries: 0
+    };
+
+    await mongoose.connect(connectionString, options);
     console.log('✅ MongoDB connected successfully');
+    
+    // Handle connection events
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+    });
+
+    mongoose.connection.on('connected', () => {
+      console.log('✅ MongoDB reconnected');
+    });
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
-    process.exit(1);
+    // Don't throw - allow the server to start without DB
+    console.log('🟡 Server starting without database connection');
   }
 };
+
 
 const createDefaultAdmin = async () => {
   try {
@@ -93,6 +126,7 @@ let serverStatus = {
 };
 
 // Enhanced initialization function
+// Enhanced initialization for Vercel
 const initializeServer = async () => {
   if (serverStatus.isInitializing || serverStatus.isInitialized) {
     console.log('🔄 Server initialization already in progress or completed');
@@ -102,56 +136,63 @@ const initializeServer = async () => {
   serverStatus.isInitializing = true;
   serverStatus.initializationStartTime = new Date();
   
-  console.log('🚀 Starting comprehensive server initialization...');
+  console.log('🚀 Starting Vercel server initialization...');
 
   try {
-    // Step 1: Database connection
-    console.log('📦 Step 1: Connecting to database...');
-    await connectDB();
-    serverStatus.services.database = true;
-
-    // Step 2: Create models
-    console.log('📦 Step 2: Creating enhanced models...');
-    models = createModels();
-    serverStatus.services.models = true;
-
-    // Step 3: Initialize email service (non-blocking)
-    console.log('📦 Step 3: Initializing email service...');
-    initializeEmail().then(success => {
-      serverStatus.services.email = success;
-      console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
-    }).catch(error => {
-      console.error('❌ Email service initialization failed:', error);
-      serverStatus.services.email = false;
+    // Add timeout for Vercel
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Initialization timeout')), 10000);
     });
 
-    // Step 4: Session setup verification
-    console.log('📦 Step 4: Verifying session configuration...');
-    serverStatus.services.session = true;
+    // Race between initialization and timeout
+    await Promise.race([
+      (async () => {
+        // Step 1: Database connection
+        console.log('📦 Step 1: Connecting to database on Vercel...');
+        await connectDB();
+        serverStatus.services.database = true;
 
-    // Step 5: Create default admin (non-blocking)
-    console.log('📦 Step 5: Setting up default admin...');
-    createDefaultAdmin().then(() => {
-      console.log('✅ Default admin setup completed');
-    }).catch(error => {
-      console.log('⚠️ Default admin setup failed:', error.message);
-    });
+        // Step 2: Create models
+        console.log('📦 Step 2: Creating enhanced models...');
+        models = createModels();
+        serverStatus.services.models = true;
 
-    // Mark initialization as complete
-    serverStatus.isInitialized = true;
-    serverStatus.isInitializing = false;
-    
-    const initTime = new Date() - serverStatus.initializationStartTime;
-    console.log(`✅ Server initialization completed in ${initTime}ms`);
+        // Step 3: Initialize email service (non-blocking)
+        console.log('📦 Step 3: Initializing email service...');
+        initializeEmail().then(success => {
+          serverStatus.services.email = success;
+          console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
+        }).catch(error => {
+          console.error('❌ Email service initialization failed:', error);
+          serverStatus.services.email = false;
+        });
+
+        // Step 4: Create default admin (non-blocking)
+        console.log('📦 Step 4: Setting up default admin...');
+        createDefaultAdmin().then(() => {
+          console.log('✅ Default admin setup completed');
+        }).catch(error => {
+          console.log('⚠️ Default admin setup failed:', error.message);
+        });
+
+        // Mark initialization as complete
+        serverStatus.isInitialized = true;
+        serverStatus.isInitializing = false;
+        
+        const initTime = new Date() - serverStatus.initializationStartTime;
+        console.log(`✅ Vercel server initialization completed in ${initTime}ms`);
+      })(),
+      timeoutPromise
+    ]);
     
   } catch (error) {
-    console.error('💥 Server initialization failed:', error);
+    console.error('💥 Vercel server initialization failed:', error);
     serverStatus.isInitializing = false;
     serverStatus.isInitialized = false;
-    throw error;
+    // Don't throw on Vercel - allow health check to still work
+    console.log('🟡 Continuing with limited functionality');
   }
 };
-
 
 
 
@@ -1656,6 +1697,35 @@ app.get('/api/health', (req, res) => {
     immediateRevenueTracking: 'enabled',
     upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
     creditDisplayLogic: 'balance_due_only'
+  });
+});
+
+// Vercel-compatible health check
+app.get('/api/health', async (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  const emailStatus = emailTransporter ? 'configured' : 'disabled';
+  
+  // Check if we're on Vercel
+  const isVercel = process.env.VERCEL === '1';
+  
+  res.json({
+    success: true,
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: isVercel ? 'vercel' : 'local',
+    app: process.env.APP_NAME || 'Eliud Shop Management',
+    version: process.env.APP_VERSION || '1.0.0',
+    database: dbStatus,
+    email: emailStatus,
+    serverInitialization: {
+      isInitialized: serverStatus.isInitialized,
+      isInitializing: serverStatus.isInitializing,
+      services: serverStatus.services
+    },
+    vercel: {
+      region: process.env.VERCEL_REGION || 'unknown',
+      environment: process.env.VERCEL_ENV || 'unknown'
+    }
   });
 });
 
