@@ -1583,17 +1583,17 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==================== AUTHENTICATION ROUTES ====================
-app.post('/api/auth/request-code', async (req, res) => {
-  try {
-    // Enhanced server initialization check
-    if (!models || !models.User || !models.SecureCode || !models.Cashier) {
-      console.error('❌ Server models not initialized');
-      return res.status(503).json({
-        success: false,
-        message: 'Server is initializing. Please try again in a moment.',
-        code: 'SERVER_INITIALIZING'
-      });
-    }
+// app.post('/api/auth/request-code', async (req, res) => {
+//   try {
+//     // Enhanced server initialization check
+//     if (!models || !models.User || !models.SecureCode || !models.Cashier) {
+//       console.error('❌ Server models not initialized');
+//       return res.status(503).json({
+//         success: false,
+//         message: 'Server is initializing. Please try again in a moment.',
+//         code: 'SERVER_INITIALIZING'
+//       });
+//     }
 
     const { email } = req.body;
 
