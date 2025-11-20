@@ -3770,6 +3770,8 @@ const PORT = process.env.PORT || 5001;
 
 // ==================== DATABASE CONNECTION ====================
 
+// ==================== UPDATED DATABASE CONNECTION ====================
+
 const connectDB = async () => {
   try {
     // If already connected, return
@@ -3789,31 +3791,39 @@ const connectDB = async () => {
 
     console.log('🔗 Attempting MongoDB connection...');
     
-    // Enhanced connection options for better reliability
+    // UPDATED: Modern connection options without deprecated parameters
     const options = {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
-      bufferCommands: false,
-      bufferMaxEntries: 0,
       maxPoolSize: 10,
       retryWrites: true,
       w: 'majority'
     };
 
+    console.log('📝 Using connection options:', options);
+
     // Force close any existing connections first
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close();
+      console.log('🔒 Closed existing MongoDB connection');
     }
 
     // Connect with timeout
     await mongoose.connect(connectionString, options);
     
     console.log('✅ MongoDB connected successfully');
+    console.log('📊 Database:', mongoose.connection.name);
+    console.log('🏠 Host:', mongoose.connection.host);
+    
     serverStatus.services.database = true;
     return true;
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
+    console.error('🔧 Error details:', {
+      name: error.name,
+      code: error.code
+    });
     serverStatus.services.database = false;
     return false;
   }
@@ -3825,12 +3835,16 @@ const connectWithRetry = async (retries = 5, delay = 5000) => {
     
     const connected = await connectDB();
     if (connected) {
+      console.log(`✅ Connected successfully on attempt ${attempt}`);
       return true;
     }
     
     if (attempt < retries) {
       console.log(`⏳ Retrying in ${delay/1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Increase delay with each retry (exponential backoff)
+      delay = Math.min(delay * 1.5, 30000); // Max 30 seconds delay
     }
   }
   
@@ -4584,6 +4598,53 @@ const createDefaultAdmin = async () => {
   }
 };
 
+// Test database connection endpoint
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const connectionString = process.env.MONGODB_URI;
+    
+    if (!connectionString) {
+      return res.json({
+        success: false,
+        message: 'MONGODB_URI not set',
+        hasConnectionString: false
+      });
+    }
+
+    // Test if we can connect
+    const isConnected = mongoose.connection.readyState === 1;
+    
+    if (isConnected) {
+      // Try a simple query
+      const testResult = await models.Shop.findOne().lean();
+      
+      res.json({
+        success: true,
+        message: 'Database connection successful',
+        database: mongoose.connection.name,
+        host: mongoose.connection.host,
+        state: mongoose.connection.readyState,
+        testQuery: testResult ? 'success' : 'no data',
+        modelsInitialized: !!models.Shop
+      });
+    } else {
+      res.json({
+        success: false,
+        message: 'Database not connected',
+        state: mongoose.connection.readyState,
+        hasConnectionString: true,
+        connectionString: connectionString.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, 'mongodb+srv://***:***@')
+      });
+    }
+  } catch (error) {
+    res.json({
+      success: false,
+      message: 'Database test failed',
+      error: error.message,
+      state: mongoose.connection.readyState
+    });
+  }
+});
 const createEmailTransporter = () => {
   try {
     const emailUser = process.env.EMAIL_USER || 'chemistseridah@gmail.com';
@@ -4642,18 +4703,29 @@ const initializeServer = async () => {
   console.log('🚀 Starting server initialization...');
 
   try {
+    // Step 1: Database connection with retry
     console.log('📦 Step 1: Connecting to database...');
-    const dbConnected = await connectWithRetry(3, 5000);
+    const dbConnected = await connectWithRetry(3, 3000);
     
     if (!dbConnected) {
-      throw new Error('Database connection failed after retries');
-    }
-    
-    console.log('📦 Step 2: Creating models...');
-    models = createModels();
-    serverStatus.services.models = true;
+      console.log('🟡 Database connection failed - running in limited mode');
+      // We'll continue without database but mark it as failed
+      serverStatus.services.database = false;
+    } else {
+      serverStatus.services.database = true;
+      
+      // Step 2: Create models (only if DB connected)
+      console.log('📦 Step 2: Creating models...');
+      models = createModels();
+      serverStatus.services.models = true;
 
-    console.log('📦 Step 3: Initializing email service...');
+      // Step 3: Create default admin (only if DB connected)
+      console.log('📦 Step 3: Setting up default admin...');
+      await createDefaultAdmin();
+    }
+
+    // Step 4: Initialize email service (non-blocking, works without DB)
+    console.log('📦 Step 4: Initializing email service...');
     initializeEmail().then(success => {
       serverStatus.services.email = success;
     }).catch(error => {
@@ -4661,25 +4733,26 @@ const initializeServer = async () => {
       serverStatus.services.email = false;
     });
 
-    console.log('📦 Step 4: Setting up default admin...');
-    createDefaultAdmin().then(() => {
-      console.log('✅ Default admin setup completed');
-    }).catch(error => {
-      console.log('⚠️ Default admin setup failed:', error.message);
-    });
-
+    // Mark initialization as complete
     serverStatus.isInitialized = true;
     serverStatus.isInitializing = false;
     
     const initTime = new Date() - serverStatus.initializationStartTime;
     console.log(`✅ Server initialization completed in ${initTime}ms`);
     
+    // Log final status
+    console.log('📊 Final Server Status:', {
+      database: serverStatus.services.database ? '✅ Connected' : '❌ Disconnected',
+      models: serverStatus.services.models ? '✅ Loaded' : '❌ Not loaded',
+      email: serverStatus.services.email ? '✅ Configured' : '❌ Disabled'
+    });
+    
   } catch (error) {
     console.error('💥 Server initialization failed:', error);
     serverStatus.isInitializing = false;
     serverStatus.isInitialized = false;
     
-    console.log('🟡 Continuing with limited functionality - database operations will fail');
+    console.log('🟡 Continuing with limited functionality');
   }
 };
 
