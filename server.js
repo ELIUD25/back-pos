@@ -1583,83 +1583,173 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==================== AUTHENTICATION ROUTES ====================
-
 app.post('/api/auth/request-code', async (req, res) => {
   try {
-    // Check if models are initialized
-    if (!models.User || !models.SecureCode) {
-      return res.status(500).json({
+    // Enhanced server initialization check
+    if (!models || !models.User || !models.SecureCode || !models.Cashier) {
+      console.error('❌ Server models not initialized');
+      return res.status(503).json({
         success: false,
-        message: 'Server initialization in progress. Please try again in a moment.'
+        message: 'Server is initializing. Please try again in a moment.',
+        code: 'SERVER_INITIALIZING'
       });
     }
 
     const { email } = req.body;
-    console.log('📧 Secure code request for:', email);
 
-    // Add null checks
-    const user = await models.User?.findOne({ email }) || 
-                 await models.Cashier?.findOne({ email });
-
-    if (!user) {
-      return res.status(404).json({
+    // Validate email presence
+    if (!email) {
+      return res.status(400).json({
         success: false,
-        message: 'No account found with this email address'
+        message: 'Email address is required',
+        code: 'EMAIL_REQUIRED'
       });
     }
-      const secureCode = generateSecureCode();
-      const expiresAt = new Date();
-      expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
-      const hashedCode = await bcrypt.hash(secureCode, 10);
-      
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address',
+        code: 'INVALID_EMAIL'
+      });
+    }
+
+    console.log('📧 Secure code request for:', email);
+
+    // Enhanced user lookup with better error handling
+    let user = null;
+    try {
+      user = await models.User.findOne({ email: email.toLowerCase().trim() }) || 
+             await models.Cashier.findOne({ email: email.toLowerCase().trim() });
+    } catch (dbError) {
+      console.error('❌ Database error during user lookup:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error. Please try again.',
+        code: 'DATABASE_ERROR'
+      });
+    }
+
+    if (!user) {
+      console.log('❌ No user found for email:', email);
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if user is active
+    if (user.status && user.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active. Please contact administrator.',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Generate secure code
+    const secureCode = generateSecureCode();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    const hashedCode = await bcrypt.hash(secureCode, 10);
+    
+    // Save secure code with enhanced error handling
+    try {
       await models.SecureCode.findOneAndUpdate(
-        { email },
+        { email: email.toLowerCase().trim() },
         {
           code: hashedCode,
           expiresAt,
           attempts: 0,
           used: false
         },
-        { upsert: true, new: true }
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: true 
+        }
       );
-
-      if (!emailTransporter) {
-        return res.json({
-          success: true,
-          message: 'Secure code generated (email service disabled)',
-          developmentMode: true,
-          secureCode: secureCode,
-          expiresIn: 15
-        });
-      }
-
-      try {
-        await sendSecureCodeEmail(email, secureCode);
-        res.json({
-          success: true,
-          message: 'Secure code sent to your email',
-          expiresIn: 15
-        });
-      } catch (emailError) {
-        console.error('❌ Failed to send email:', emailError);
-        await models.SecureCode.deleteOne({ email });
-        res.status(500).json({
-          success: false,
-          message: 'Failed to send secure code. Please try again later.'
-        });
-      }
-
-    } catch (error) {
-      console.error('❌ Error requesting secure code:', error);
-      res.status(500).json({
+    } catch (dbError) {
+      console.error('❌ Database error saving secure code:', dbError);
+      return res.status(500).json({
         success: false,
-        message: 'Failed to process request. Please try again later.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: 'Failed to generate secure code. Please try again.',
+        code: 'CODE_SAVE_ERROR'
       });
     }
+
+    // Handle email service availability
+    if (!emailTransporter) {
+      console.log('📧 Email service disabled - returning code in development mode');
+      return res.json({
+        success: true,
+        message: 'Secure code generated (email service disabled)',
+        developmentMode: true,
+        secureCode: secureCode,
+        expiresIn: 15,
+        code: 'DEVELOPMENT_MODE'
+      });
+    }
+
+    // Send email with enhanced error handling
+    try {
+      await sendSecureCodeEmail(email, secureCode);
+      console.log('✅ Secure code sent successfully to:', email);
+      
+      res.json({
+        success: true,
+        message: 'Secure code sent to your email',
+        expiresIn: 15,
+        code: 'CODE_SENT'
+      });
+    } catch (emailError) {
+      console.error('❌ Failed to send email:', emailError);
+      
+      // Clean up the secure code since email failed
+      try {
+        await models.SecureCode.deleteOne({ email: email.toLowerCase().trim() });
+      } catch (cleanupError) {
+        console.error('❌ Failed to cleanup secure code after email failure:', cleanupError);
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send secure code. Please try again later.',
+        code: 'EMAIL_SEND_FAILED'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Unexpected error in request-code endpoint:', error);
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = 'Failed to process request. Please try again later.';
+    let errorCode = 'UNKNOWN_ERROR';
+    
+    if (error.name === 'MongoNetworkError') {
+      errorMessage = 'Database connection error. Please try again.';
+      errorCode = 'DATABASE_CONNECTION_ERROR';
+    } else if (error.name === 'ValidationError') {
+      errorMessage = 'Data validation error. Please check your input.';
+      errorCode = 'VALIDATION_ERROR';
+    }
+
+    res.status(500).json({
+      success: false,
+      message: errorMessage,
+      code: errorCode,
+      // Only include error details in development
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error.message,
+        stack: error.stack
+      })
+    });
   }
-);
+});
 
 // Verify secure login code
 app.post('/api/auth/verify-code',
