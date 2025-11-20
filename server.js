@@ -876,13 +876,19 @@ app.use((req, res, next) => {
 
 app.use(compression());
 
+a// In your server.js or app.js
 app.use(cors({
-  // origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  origin: process.env.CLIENT_URL || 'https://seridah-chemist.vercel.app',
+  origin: [
+    'https://seridah-chemist.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
+// Handle preflight requests
 app.options('*', cors());
 
 const limiter = rateLimit({
