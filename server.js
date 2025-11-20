@@ -763,7 +763,7 @@ const CalculationUtils = {
 
 const createEmailTransporter = () => {
   try {
-    const emailUser = process.env.EMAIL_USER || 'kinyuastanzo6759@gmail.com';
+    const emailUser = process.env.EMAIL_USER || 'chemistseridah@gmail.com';
     const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
 
     console.log('📧 Configuring email transporter...');
@@ -819,16 +819,16 @@ const sendSecureCodeEmail = async (email, code) => {
   }
 
   const mailOptions = {
-    from: process.env.EMAIL_USER || 'kinyuastanzo6759@gmail.com',
+    from: process.env.EMAIL_USER || 'chemistseridah@gmail.com',
     to: email,
-    subject: 'Your Secure Login Code - Demo Shop Management',
+    subject: 'Your Secure Login Code - Seridah Chemist Management',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-          Stanzo Bar Management - Secure Login
+          Seridah Chemist Management - Secure Login
         </h2>
         <p>Hello,</p>
-        <p>Your secure login code for Demo Shop Management System is:</p>
+        <p>Your secure login code for Seridah Chemist Management System is:</p>
         <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
           ${code}
         </div>
@@ -840,7 +840,7 @@ const sendSecureCodeEmail = async (email, code) => {
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
         <p style="color: #888; font-size: 11px;">
-          This is an automated message from Demo shop Management System.
+          This is an automated message from Seridah Chemist Management System.
         </p>
       </div>
     `
@@ -941,7 +941,7 @@ const connectDB = async () => {
 
 const createDefaultAdmin = async () => {
   try {
-    const adminEmail = process.env.ADMIN_EMAIL || 'kinyuastanzo6759@gmail.com';
+    const adminEmail = process.env.ADMIN_EMAIL || 'chemistseridah@gmail.com';
     
     const existingAdmin = await models.User.findOne({ email: adminEmail });
     if (!existingAdmin) {
@@ -1563,7 +1563,7 @@ app.get('/api/health', (req, res) => {
     success: true,
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    app: process.env.APP_NAME || 'Demo Shop Management',
+    app: process.env.APP_NAME || 'Seridah Chemist Management',
     version: process.env.APP_VERSION || '1.0.0',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     email: emailTransporter ? 'configured' : 'disabled',

@@ -3,8 +3,8 @@ const adminAuth = (req, res, next) => {
   // Check if user is authenticated and is an admin
   if (req.session && req.session.isAuthenticated) {
     // Check if it's the specific admin user
-    if (req.session.adminEmail === 'kinyuastanzo6759@gmail.com' || 
-        req.session.email === 'kinyuastanzo6759@gmail.com') {
+    if (req.session.adminEmail === 'chemistseridah@gmail.com' || 
+        req.session.email === 'chemistseridah@gmail.com') {
       return next();
     }
   }

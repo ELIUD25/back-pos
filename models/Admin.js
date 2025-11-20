@@ -6,7 +6,7 @@ const adminSchema = new mongoose.Schema({
     type: String, 
     required: true, 
     unique: true,
-    default: 'kinyuastanzo6759@gmail.com'
+    default: 'chemistseridah@gmail.com'
   },
   password: { 
     type: String, 
@@ -58,7 +58,7 @@ adminSchema.methods.updateLastLogin = function() {
 
 // Static method to get or create admin account
 adminSchema.statics.getAdminAccount = async function() {
-  const adminEmail = 'kinyuastanzo6759@gmail.com';
+  const adminEmail = 'chemistseridah@gmail.com';
   const adminPassword = 'Kinyua01';
   
   let admin = await this.findOne({ email: adminEmail });

@@ -13,7 +13,7 @@ const createAdminUser = async () => {
     const User = require('../models/User');
     
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'kinyuastanzo6759@gmail.com' });
+    const existingAdmin = await User.findOne({ email: 'chemistseridah@gmail.com' });
     if (existingAdmin) {
       console.log('⚠️ Admin user already exists');
       console.log('📧 Existing user:', existingAdmin.email);
@@ -23,7 +23,7 @@ const createAdminUser = async () => {
     
     // Create new admin user
     const adminUser = new User({
-      email: 'kinyuastanzo6759@gmail.com',
+      email: 'chemistseridah@gmail.com',
       password: await bcrypt.hash('admin123', 12),
       name: 'System Administrator',
       role: 'admin',
@@ -32,7 +32,7 @@ const createAdminUser = async () => {
 
     await adminUser.save();
     console.log('✅ Admin user created successfully!');
-    console.log('📧 Email: kinyuastanzo6759@gmail.com');
+    console.log('📧 Email: chemistseridah@gmail.com');
     console.log('🔑 Password: admin123');
     console.log('💡 Please change these credentials after login!');
     
