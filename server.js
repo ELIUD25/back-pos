@@ -86,7 +86,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Enhanced Transaction Schema with Complete Credit Support
+  // ENHANCED Transaction Schema with Complete Upfront Credit Support
   const transactionSchema = new mongoose.Schema({
     transactionNumber: { type: String, required: true, unique: true },
     totalAmount: { type: Number, required: true },
@@ -124,26 +124,38 @@ const createModels = () => {
     amountPaid: { type: Number, default: 0 },
     dueDate: Date,
     
-    // NEW: Credit sale classification fields
+    // Credit sale classification fields
     creditShopName: String,
     creditShopId: String,
     shopClassification: String,
     
-    // NEW: Payment split tracking for cashier dashboard
+    // ENHANCED: Payment split tracking with upfront credit support
     paymentSplit: {
       cash: { type: Number, default: 0 },
       bank_mpesa: { type: Number, default: 0 },
-      credit: { type: Number, default: 0 }
+      credit: { type: Number, default: 0 },
+      upfront_cash: { type: Number, default: 0 },        // NEW: Track upfront cash separately
+      upfront_bank_mpesa: { type: Number, default: 0 }   // NEW: Track upfront bank/mpesa separately
     },
     
-    // NEW: Immediate revenue tracking for cashier
+    // Immediate revenue tracking for cashier
     immediateRevenue: { type: Number, default: 0 },
+    
+    // NEW: Upfront payment details for credit transactions
+    upfrontPaymentDetails: {
+      amount: { type: Number, default: 0 },
+      method: String,
+      split: {
+        cash: { type: Number, default: 0 },
+        bank_mpesa: { type: Number, default: 0 }
+      }
+    },
     
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Enhanced Credit Schema
+  // ENHANCED Credit Schema with upfront payment tracking
   const creditSchema = new mongoose.Schema({
     transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
     customerName: { type: String, required: true },
@@ -160,18 +172,30 @@ const createModels = () => {
       paymentMethod: String,
       recordedBy: String,
       cashierName: String,
-      notes: String
+      notes: String,
+      isUpfrontPayment: { type: Boolean, default: false } // NEW: Track if payment was upfront
     }],
     shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     shopId: String,
     shopName: String,
     creditShopName: String,
     creditShopId: String,
-    shopClassification: String, // NEW: Shop classification for credit sales
+    shopClassification: String,
     cashierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Cashier' },
     cashierName: String,
     recordedBy: String,
     notes: String,
+    
+    // NEW: Upfront payment tracking
+    upfrontPayment: {
+      amount: { type: Number, default: 0 },
+      method: String,
+      split: {
+        cash: { type: Number, default: 0 },
+        bank_mpesa: { type: Number, default: 0 }
+      }
+    },
+    
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -217,7 +241,7 @@ const createModels = () => {
 
 let models = {};
 
-// ==================== UPDATED CALCULATION UTILITIES WITH CREDIT PARTIAL PAYMENT SUPPORT ====================
+// ==================== UPDATED CALCULATION UTILITIES WITH COMPLETE UPFRONT CREDIT SUPPORT ====================
 
 const CalculationUtils = {
   safeNumber: (value, defaultValue = 0) => {
@@ -319,7 +343,7 @@ const CalculationUtils = {
     }
   },
 
-  // ENHANCED: Process single transaction with comprehensive cost calculation
+  // ENHANCED: Process single transaction with comprehensive cost calculation and upfront credit support
   processSingleTransaction: async (transaction, products = []) => {
     try {
       if (!transaction) return CalculationUtils.createFallbackTransaction();
@@ -338,11 +362,11 @@ const CalculationUtils = {
       // ENHANCED: Use the new cost calculation function with products data
       const cost = await CalculationUtils.calculateCostFromItems(transaction, products);
       
-      // ENHANCED: Credit management revenue recognition logic
+      // ENHANCED: Credit management revenue recognition logic with upfront payment support
       const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) || 
                         CalculationUtils.safeNumber(transaction.paidAmount) || 0;
       
-      // UPDATED: For credit transactions, recognized revenue is the amount paid immediately
+      // UPDATED: For credit transactions, recognized revenue is the amount paid immediately (upfront payment)
       const recognizedRevenue = isCredit ? amountPaid : totalAmount;
       
       const outstandingRevenue = isCredit ? 
@@ -371,6 +395,23 @@ const CalculationUtils = {
         }
       }
 
+      // ENHANCED: Calculate payment splits with upfront credit support
+      let paymentSplit = transaction.paymentSplit || {
+        cash: 0,
+        bank_mpesa: 0,
+        credit: 0,
+        upfront_cash: 0,
+        upfront_bank_mpesa: 0
+      };
+
+      // If paymentSplit doesn't have upfront fields, initialize them
+      if (!paymentSplit.upfront_cash && !paymentSplit.upfront_bank_mpesa) {
+        if (isCredit && transaction.upfrontPaymentDetails) {
+          paymentSplit.upfront_cash = CalculationUtils.safeNumber(transaction.upfrontPaymentDetails.split?.cash);
+          paymentSplit.upfront_bank_mpesa = CalculationUtils.safeNumber(transaction.upfrontPaymentDetails.split?.bank_mpesa);
+        }
+      }
+
       return {
         ...transaction,
         totalAmount,
@@ -382,6 +423,7 @@ const CalculationUtils = {
         outstandingRevenue,
         amountPaid,
         creditStatus,
+        paymentSplit, // ENHANCED: Include updated payment split
         itemsCount: transaction.items ? transaction.items.reduce((sum, item) => 
           sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0,
         displayDate: transaction.displayDate || 
@@ -413,7 +455,7 @@ const CalculationUtils = {
     return CalculationUtils.processSingleTransaction(transaction);
   },
 
-  // UPDATED: Process comprehensive data with accurate COGS calculation (complete sales + credit sales)
+  // UPDATED: Process comprehensive data with accurate COGS calculation and upfront credit support
   processComprehensiveData: async (rawData, selectedShop) => {
     const transactions = rawData.transactions || [];
     const expenses = rawData.expenses || [];
@@ -422,7 +464,7 @@ const CalculationUtils = {
     const shops = rawData.shops || [];
     const cashiers = rawData.cashiers || [];
 
-    console.log('🔄 Processing comprehensive data with enhanced COGS calculation...', {
+    console.log('🔄 Processing comprehensive data with enhanced upfront credit support...', {
       transactions: transactions.length,
       products: products.length
     });
@@ -446,7 +488,7 @@ const CalculationUtils = {
     const nonCreditTransactions = filteredTransactions.filter(t => !t.isCreditTransaction);
     const completeTransactions = filteredTransactions.filter(t => t.status === 'completed');
 
-    // Revenue calculations - UPDATED: Use recognizedRevenue for accurate revenue counting
+    // ENHANCED Revenue calculations with upfront credit support
     const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const creditSales = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
@@ -460,17 +502,21 @@ const CalculationUtils = {
     const totalExpenses = expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0);
     const netProfit = grossProfit - totalExpenses;
     
-    // Payment method calculations - UPDATED: Use paymentSplit for accurate cash/bank_mpesa tracking
+    // ENHANCED Payment method calculations with upfront credit support
     let totalCash = 0;
     let totalMpesaBank = 0;
     let totalCredit = 0;
+    let totalUpfrontCash = 0;
+    let totalUpfrontMpesaBank = 0;
 
     filteredTransactions.forEach(transaction => {
-      // Use paymentSplit if available, otherwise calculate based on paymentMethod
+      // Use paymentSplit with upfront credit support
       if (transaction.paymentSplit) {
         totalCash += CalculationUtils.safeNumber(transaction.paymentSplit.cash);
         totalMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.bank_mpesa);
         totalCredit += CalculationUtils.safeNumber(transaction.paymentSplit.credit);
+        totalUpfrontCash += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_cash);
+        totalUpfrontMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_bank_mpesa);
       } else {
         // Fallback calculation based on paymentMethod
         if (transaction.paymentMethod === 'cash') {
@@ -487,6 +533,10 @@ const CalculationUtils = {
         }
       }
     });
+
+    // ENHANCED: Include upfront payments in cash and bank_mpesa totals
+    totalCash += totalUpfrontCash;
+    totalMpesaBank += totalUpfrontMpesaBank;
     
     // Credit calculations
     const outstandingCredit = credits
@@ -497,8 +547,9 @@ const CalculationUtils = {
     
     const totalCreditGiven = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const recognizedCreditRevenue = creditTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
+    const totalUpfrontPayments = creditTransactions.reduce((sum, t) => sum + t.amountPaid, 0);
 
-    // Enhanced financial stats matching the image requirements
+    // Enhanced financial stats matching the image requirements with upfront credit support
     const financialStats = {
       // Core metrics from image
       totalSales: totalTransactions,
@@ -508,12 +559,17 @@ const CalculationUtils = {
       totalExpenses: totalExpenses,
       grossProfit: grossProfit,
       netProfit: netProfit,
-      costOfGoodsSold: costOfGoodsSold, // UPDATED: Now properly calculated for both complete + credit sales
+      costOfGoodsSold: costOfGoodsSold,
       totalMpesaBank: totalMpesaBank,
       totalCash: totalCash,
       totalCredit: totalCredit,
       outstandingCredit: outstandingCredit,
       totalCreditGiven: totalCreditGiven,
+
+      // NEW: Upfront payment metrics
+      totalUpfrontPayments: totalUpfrontPayments,
+      totalUpfrontCash: totalUpfrontCash,
+      totalUpfrontMpesaBank: totalUpfrontMpesaBank,
 
       // Additional detailed metrics
       creditSalesCount: creditTransactions.length,
@@ -535,12 +591,12 @@ const CalculationUtils = {
 
       // Metadata
       _cogsCalculation: 'complete_sales_plus_credit_sales_made',
-      _revenueCalculation: 'recognized_revenue_includes_partial_payments',
-      _paymentTracking: 'payment_split_enhanced',
+      _revenueCalculation: 'recognized_revenue_includes_upfront_payments',
+      _paymentTracking: 'payment_split_with_upfront_support',
       _calculatedAt: new Date().toISOString()
     };
 
-    console.log('💰 Final COGS Calculation:', {
+    console.log('💰 Final COGS Calculation with Upfront Credit Support:', {
       totalTransactions,
       totalRevenue,
       costOfGoodsSold,
@@ -549,6 +605,7 @@ const CalculationUtils = {
       totalCash,
       totalMpesaBank,
       totalCredit,
+      totalUpfrontPayments,
       cogsBreakdown: financialStats.cogsBreakdown
     });
 
@@ -569,8 +626,9 @@ const CalculationUtils = {
       totalCredit: financialStats.totalCredit,
       outstandingCredit: financialStats.outstandingCredit,
       totalCreditGiven: financialStats.totalCreditGiven,
+      totalUpfrontPayments: financialStats.totalUpfrontPayments,
       _cogsMethodology: 'complete_sales_plus_credit_sales_made',
-      _revenueMethodology: 'recognized_revenue_includes_partial_payments'
+      _revenueMethodology: 'recognized_revenue_includes_upfront_payments'
     };
 
     // Calculate top products
@@ -684,7 +742,7 @@ const CalculationUtils = {
         };
       }
       
-      shopMap[shopId].revenue += CalculationUtils.safeNumber(transaction.recognizedRevenue); // UPDATED: Use recognized revenue
+      shopMap[shopId].revenue += CalculationUtils.safeNumber(transaction.recognizedRevenue);
       shopMap[shopId].transactions += 1;
       shopMap[shopId].profit += CalculationUtils.safeNumber(transaction.profit);
       shopMap[shopId].cost += CalculationUtils.safeNumber(transaction.cost);
@@ -1034,19 +1092,20 @@ const getAllTransactionData = async (filters = {}) => {
   }
 };
 
-// ==================== ENHANCED CREDIT SALE WITH PARTIAL PAYMENT SUPPORT ====================
+// ==================== ENHANCED CREDIT SALE WITH COMPLETE UPFRONT PAYMENT SUPPORT ====================
 
-// ENHANCED TRANSACTION CREATION WITH CREDIT PARTIAL PAYMENT SUPPORT
+// ENHANCED TRANSACTION CREATION WITH COMPLETE UPFRONT CREDIT SUPPORT
 app.post('/api/transactions', async (req, res) => {
   try {
     const transactionData = req.body;
     
-    console.log('💳 Creating transaction with credit partial payment support:', {
+    console.log('💳 Creating transaction with complete upfront credit support:', {
       paymentMethod: transactionData.paymentMethod,
       totalAmount: transactionData.totalAmount,
       amountPaidNow: transactionData.amountPaidNow,
       isCreditPayment: transactionData.isCreditPayment,
-      originalCreditId: transactionData.originalCreditId
+      originalCreditId: transactionData.originalCreditId,
+      upfrontPaymentMethod: transactionData.upfrontPaymentMethod
     });
 
     // Check for duplicate transaction
@@ -1134,7 +1193,7 @@ app.post('/api/transactions', async (req, res) => {
       };
     }));
 
-    // Handle partial payment for credit sales
+    // ENHANCED: Handle partial payment for credit sales with upfront payment support
     const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
     const isCreditTransaction = transactionData.paymentMethod === 'credit';
     
@@ -1169,16 +1228,16 @@ app.post('/api/transactions', async (req, res) => {
     transactionData.itemsCount = items.reduce((sum, item) => sum + CalculationUtils.safeNumber(item.quantity, 1), 0);
     transactionData.items = enhancedItems;
 
-    // NEW: Enhanced payment split tracking for cashier dashboard
-    if (!transactionData.paymentSplit) {
-      transactionData.paymentSplit = {
-        cash: 0,
-        bank_mpesa: 0,
-        credit: 0
-      };
-    }
+    // ENHANCED: Initialize payment split with upfront credit support
+    transactionData.paymentSplit = {
+      cash: 0,
+      bank_mpesa: 0,
+      credit: 0,
+      upfront_cash: 0,
+      upfront_bank_mpesa: 0
+    };
 
-    // Handle credit transactions
+    // Handle credit transactions with upfront payment support
     if (isCreditTransaction) {
       transactionData.isCreditTransaction = true;
       transactionData.creditStatus = creditStatus;
@@ -1187,7 +1246,7 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.amountPaid = amountPaid;
       transactionData.status = 'credit';
       
-      // NEW: Track immediate revenue for cashier dashboard
+      // Track immediate revenue for cashier dashboard
       transactionData.immediateRevenue = amountPaidNow;
       
       // Store credit shop classification
@@ -1195,23 +1254,35 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.creditShopId = transactionData.creditShopId || transactionData.shopId;
       transactionData.shopClassification = transactionData.shopClassification || transactionData.shopName;
       
-      // NEW: Update payment split for credit transactions - ONLY SHOW BALANCE DUE ON CREDIT SIDE
+      // ENHANCED: Track upfront payment details
+      transactionData.upfrontPaymentDetails = {
+        amount: amountPaidNow,
+        method: transactionData.upfrontPaymentMethod || 'cash',
+        split: {
+          cash: 0,
+          bank_mpesa: 0
+        }
+      };
+
+      // ENHANCED: Update payment split for credit transactions with upfront payment support
       if (amountPaidNow > 0) {
         // For credit sales with upfront payment, track the payment method
         if (transactionData.upfrontPaymentMethod === 'cash') {
-          transactionData.paymentSplit.cash = amountPaidNow;
+          transactionData.paymentSplit.upfront_cash = amountPaidNow;
+          transactionData.upfrontPaymentDetails.split.cash = amountPaidNow;
         } else if (transactionData.upfrontPaymentMethod === 'bank_mpesa') {
-          transactionData.paymentSplit.bank_mpesa = amountPaidNow;
+          transactionData.paymentSplit.upfront_bank_mpesa = amountPaidNow;
+          transactionData.upfrontPaymentDetails.split.bank_mpesa = amountPaidNow;
         } else if (transactionData.upfrontPaymentMethod === 'cash_bank_mpesa' && transactionData.upfrontPaymentSplit) {
-          transactionData.paymentSplit.cash = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.cash);
-          transactionData.paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.bank_mpesa);
+          transactionData.paymentSplit.upfront_cash = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.cash);
+          transactionData.paymentSplit.upfront_bank_mpesa = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.bank_mpesa);
+          transactionData.upfrontPaymentDetails.split.cash = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.cash);
+          transactionData.upfrontPaymentDetails.split.bank_mpesa = CalculationUtils.safeNumber(transactionData.upfrontPaymentSplit.bank_mpesa);
         }
-        // CREDIT UPDATE: Only show the remaining balance (outstandingRevenue) on credit side
-        transactionData.paymentSplit.credit = outstandingRevenue;
-      } else {
-        // No upfront payment, entire amount is credit
-        transactionData.paymentSplit.credit = totalAmount;
       }
+      
+      // CREDIT UPDATE: Only show the remaining balance (outstandingRevenue) on credit side
+      transactionData.paymentSplit.credit = outstandingRevenue;
       
       // Set due date if not provided (default 30 days)
       if (!transactionData.dueDate) {
@@ -1225,7 +1296,7 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.status = 'completed';
       transactionData.immediateRevenue = totalAmount;
       
-      // NEW: Update payment split for non-credit transactions
+      // ENHANCED: Update payment split for non-credit transactions
       if (transactionData.paymentMethod === 'cash') {
         transactionData.paymentSplit.cash = totalAmount;
       } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
@@ -1264,7 +1335,7 @@ app.post('/api/transactions', async (req, res) => {
           customerEmail: transactionData.customerEmail,
           totalAmount: totalAmount,
           amountPaid: amountPaidNow,
-          balanceDue: outstandingRevenue, // UPDATED: This now shows only the remaining balance
+          balanceDue: outstandingRevenue, // This now shows only the remaining balance
           dueDate: transactionData.dueDate,
           status: creditStatus,
           shop: transactionData.shop,
@@ -1276,7 +1347,16 @@ app.post('/api/transactions', async (req, res) => {
           cashierId: transactionData.cashierId,
           cashierName: transactionData.cashierName,
           recordedBy: transactionData.recordedBy || 'System',
-          notes: `Credit transaction created for ${transactionData.customerName}`
+          notes: `Credit transaction created for ${transactionData.customerName}`,
+          // NEW: Store upfront payment details in credit record
+          upfrontPayment: {
+            amount: amountPaidNow,
+            method: transactionData.upfrontPaymentMethod || 'cash',
+            split: {
+              cash: transactionData.paymentSplit.upfront_cash || 0,
+              bank_mpesa: transactionData.paymentSplit.upfront_bank_mpesa || 0
+            }
+          }
         };
 
         // Add initial payment to history if partial payment was made
@@ -1287,35 +1367,38 @@ app.post('/api/transactions', async (req, res) => {
             paymentMethod: transactionData.upfrontPaymentMethod || 'cash',
             recordedBy: transactionData.recordedBy || 'System',
             cashierName: transactionData.cashierName,
-            notes: `Initial payment for credit sale`
+            notes: `Initial upfront payment for credit sale`,
+            isUpfrontPayment: true // NEW: Mark as upfront payment
           }];
         }
 
         const credit = await models.Credit.create(creditData);
-        console.log('✅ Credit record created with partial payment:', {
+        console.log('✅ Credit record created with upfront payment support:', {
           creditId: credit._id,
           totalAmount: credit.totalAmount,
           amountPaid: credit.amountPaid,
-          balanceDue: credit.balanceDue, // UPDATED: This now shows only the remaining balance
-          status: credit.status
+          balanceDue: credit.balanceDue, // This now shows only the remaining balance
+          status: credit.status,
+          upfrontPayment: credit.upfrontPayment
         });
       } else {
         console.log('⚠️ Credit record already exists for transaction:', transaction._id);
       }
     }
 
-    console.log('✅ Transaction created successfully with credit partial payment support:', {
+    console.log('✅ Transaction created successfully with upfront credit support:', {
       transactionId: transaction._id,
       totalAmount: totalAmount,
       amountPaid: amountPaid,
       recognizedRevenue: recognizedRevenue,
-      outstandingRevenue: outstandingRevenue, // UPDATED: This is what will be displayed on credit side
+      outstandingRevenue: outstandingRevenue, // This is what will be displayed on credit side
       immediateRevenue: transactionData.immediateRevenue,
       cost: totalCost,
       profit: profit,
       paymentMethod: transactionData.paymentMethod,
       isCredit: isCreditTransaction,
-      paymentSplit: transactionData.paymentSplit, // UPDATED: Credit side now only shows balance due
+      paymentSplit: transactionData.paymentSplit, // ENHANCED: Includes upfront payment tracking
+      upfrontPaymentDetails: transactionData.upfrontPaymentDetails,
       itemsSold: transactionData.itemsCount
     });
 
@@ -1326,8 +1409,9 @@ app.post('/api/transactions', async (req, res) => {
       creditDetails: isCreditTransaction ? {
         totalAmount,
         amountPaid: amountPaidNow,
-        balanceDue: outstandingRevenue, // UPDATED: Show only balance due
-        status: creditStatus
+        balanceDue: outstandingRevenue, // Show only balance due
+        status: creditStatus,
+        upfrontPayment: transactionData.upfrontPaymentDetails
       } : null
     });
   } catch (error) {
@@ -1369,7 +1453,7 @@ async function handleCreditPayment(transactionData, res) {
 
     // Update the credit record
     originalCredit.amountPaid = newAmountPaid;
-    originalCredit.balanceDue = newBalanceDue; // UPDATED: This now shows only the remaining balance
+    originalCredit.balanceDue = newBalanceDue; // This now shows only the remaining balance
     
     // Update status
     let newStatus = originalCredit.status;
@@ -1383,10 +1467,10 @@ async function handleCreditPayment(transactionData, res) {
     // Add payment to history
     originalCredit.paymentHistory.push({
       amount: paymentAmount,
-      paymentDate: new Date(),
       paymentMethod: transactionData.paymentMethod,
       recordedBy: transactionData.recordedBy || 'System',
       cashierName: transactionData.cashierName || 'Cashier',
+      paymentDate: new Date(),
       notes: `Credit payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
     });
 
@@ -1398,17 +1482,19 @@ async function handleCreditPayment(transactionData, res) {
       await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
         amountPaid: newAmountPaid,
         recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue, // UPDATED: This now shows only the remaining balance
+        outstandingRevenue: newBalanceDue, // This now shows only the remaining balance
         creditStatus: newStatus,
         updatedAt: new Date()
       });
     }
 
-    // NEW: Enhanced payment split for credit payments
+    // ENHANCED: Payment split for credit payments
     const paymentSplit = {
       cash: 0,
       bank_mpesa: 0,
-      credit: 0
+      credit: 0,
+      upfront_cash: 0,
+      upfront_bank_mpesa: 0
     };
 
     if (transactionData.paymentMethod === 'cash') {
@@ -1430,11 +1516,11 @@ async function handleCreditPayment(transactionData, res) {
       recognizedRevenue: paymentAmount,
       outstandingRevenue: 0,
       amountPaid: paymentAmount,
-      immediateRevenue: paymentAmount, // NEW: Track immediate revenue
+      immediateRevenue: paymentAmount, // Track immediate revenue
       isCreditTransaction: false, // This is a payment, not a new credit
       creditStatus: null,
       status: 'completed',
-      paymentSplit: paymentSplit // NEW: Include payment split
+      paymentSplit: paymentSplit // Include payment split
     };
 
     const paymentTransaction = new models.Transaction(paymentTransactionData);
@@ -1444,7 +1530,7 @@ async function handleCreditPayment(transactionData, res) {
       creditId: originalCredit._id,
       paymentAmount,
       newAmountPaid,
-      newBalanceDue, // UPDATED: This now shows only the remaining balance
+      newBalanceDue, // This now shows only the remaining balance
       status: newStatus,
       paymentTransactionId: paymentTransaction._id,
       paymentSplit: paymentSplit
@@ -1485,7 +1571,8 @@ app.get('/api/health', (req, res) => {
     cogsCalculation: 'complete_sales_plus_credit_sales_made',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
-    creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+    creditDisplayLogic: 'balance_due_only'
   });
 });
 
@@ -1774,7 +1861,66 @@ app.post('/api/auth/login', async (req, res) => {
     });
   }
 });
+// Add this to your server code for debugging
+app.post('/api/debug/credit-transaction', async (req, res) => {
+  try {
+    const transactionData = req.body;
+    
+    console.log('🔍 DEBUG - Transaction data received:', {
+      paymentMethod: transactionData.paymentMethod,
+      totalAmount: transactionData.totalAmount,
+      amountPaidNow: transactionData.amountPaidNow,
+      upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
+      upfrontPaymentSplit: transactionData.upfrontPaymentSplit,
+      isCreditTransaction: transactionData.paymentMethod === 'credit'
+    });
 
+    // Simulate what should happen
+    const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
+    const totalAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
+    const balanceDue = Math.max(0, totalAmount - amountPaidNow);
+
+    console.log('🔍 DEBUG - Expected credit record:', {
+      totalAmount,
+      amountPaid: amountPaidNow,
+      balanceDue, // This should be the remaining balance only
+      upfrontPayment: {
+        amount: amountPaidNow,
+        method: transactionData.upfrontPaymentMethod,
+        split: transactionData.upfrontPaymentSplit
+      }
+    });
+
+    res.json({
+      success: true,
+      debug: {
+        received: {
+          amountPaidNow: transactionData.amountPaidNow,
+          upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
+          upfrontPaymentSplit: transactionData.upfrontPaymentSplit
+        },
+        expected: {
+          totalAmount,
+          amountPaid: amountPaidNow,
+          balanceDue,
+          upfrontPayment: {
+            amount: amountPaidNow,
+            method: transactionData.upfrontPaymentMethod,
+            split: transactionData.upfrontPaymentSplit
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Debug failed',
+      error: error.message
+    });
+  }
+});
 // ==================== COMBINED TRANSACTION ENDPOINTS ====================
 
 app.get('/api/transactions/combined', async (req, res) => {
@@ -1813,7 +1959,8 @@ app.get('/api/transactions/combined', async (req, res) => {
       cogsMethodology: 'complete_sales_plus_credit_sales_made',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     };
 
     if (dataType !== 'all') {
@@ -1848,7 +1995,8 @@ app.get('/api/transactions/combined', async (req, res) => {
                 totalCredits: transactionData.credits.length,
                 totalCreditAmount: transactionData.summary.totalCreditGiven,
                 outstandingCredit: transactionData.summary.outstandingCredit,
-                recognizedCreditRevenue: transactionData.summary.recognizedCreditRevenue
+                recognizedCreditRevenue: transactionData.summary.recognizedCreditRevenue,
+                totalUpfrontPayments: transactionData.summary.totalUpfrontPayments // NEW: Include upfront payments
               }
             }
           };
@@ -1890,7 +2038,7 @@ app.get('/api/transactions/combined', async (req, res) => {
   }
 });
 
-// SPECIFIC METRICS ENDPOINT - Returns exactly the 12 metrics shown in the image
+// SPECIFIC METRICS ENDPOINT - Returns exactly the 12 metrics shown in the image with upfront credit support
 app.get('/api/transactions/metrics', async (req, res) => {
   try {
     const {
@@ -1900,7 +2048,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
       cashierId
     } = req.query;
 
-    console.log('📈 Fetching specific transaction metrics...', req.query);
+    console.log('📈 Fetching specific transaction metrics with upfront credit support...', req.query);
 
     const filters = {
       startDate,
@@ -1911,7 +2059,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
 
     const transactionData = await getAllTransactionData(filters);
 
-    // Extract exactly the 12 metrics shown in the image
+    // Extract exactly the 12 metrics shown in the image with upfront credit support
     const metrics = {
       // 1. Total Sales
       totalSales: {
@@ -1937,7 +2085,7 @@ app.get('/api/transactions/metrics', async (req, res) => {
       // 4. Total Revenue
       totalRevenue: {
         amount: transactionData.financialStats.totalRevenue,
-        description: 'From credit & non-credit sales'
+        description: 'From credit & non-credit sales (includes upfront payments)'
       },
       
       // 5. Expenses
@@ -1967,25 +2115,31 @@ app.get('/api/transactions/metrics', async (req, res) => {
       // 9. Total Mpesa/Bank
       totalMpesaBank: {
         amount: transactionData.financialStats.totalMpesaBank,
-        description: 'Digital payments'
+        description: 'Digital payments (includes upfront credit payments)'
       },
       
       // 10. Total Cash
       totalCash: {
         amount: transactionData.financialStats.totalCash,
-        description: 'Cash payments'
+        description: 'Cash payments (includes upfront credit payments)'
       },
       
       // 11. Outstanding Credit
       outstandingCredit: {
         amount: transactionData.financialStats.outstandingCredit,
-        description: 'Unpaid credit balance'
+        description: 'Unpaid credit balance only'
       },
       
       // 12. Total Credit Given
       totalCreditGiven: {
         amount: transactionData.financialStats.totalCreditGiven,
         description: 'Total credit extended'
+      },
+
+      // NEW: Upfront Payment Metrics
+      upfrontPayments: {
+        amount: transactionData.financialStats.totalUpfrontPayments,
+        description: 'Upfront payments on credit sales'
       }
     };
 
@@ -2000,7 +2154,8 @@ app.get('/api/transactions/metrics', async (req, res) => {
       cogsCalculation: 'complete_sales_plus_credit_sales_made',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
 
   } catch (error) {
@@ -2048,11 +2203,12 @@ app.get('/api/transactions/with-credits', async (req, res) => {
           customerPhone: creditInfo.customerPhone,
           totalAmount: creditInfo.totalAmount,
           amountPaid: creditInfo.amountPaid,
-          balanceDue: creditInfo.balanceDue, // UPDATED: This now shows only the remaining balance
+          balanceDue: creditInfo.balanceDue, // This now shows only the remaining balance
           dueDate: creditInfo.dueDate,
           status: creditInfo.status,
           paymentHistory: creditInfo.paymentHistory,
-          shopClassification: creditInfo.shopClassification
+          shopClassification: creditInfo.shopClassification,
+          upfrontPayment: creditInfo.upfrontPayment // NEW: Include upfront payment details
         } : null
       };
     });
@@ -2069,7 +2225,8 @@ app.get('/api/transactions/with-credits', async (req, res) => {
       cogsMethodology: 'complete_sales_plus_credit_sales_made',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
 
   } catch (error) {
@@ -2084,7 +2241,7 @@ app.get('/api/transactions/with-credits', async (req, res) => {
 
 // ==================== CASHIER-SPECIFIC ENDPOINTS ====================
 
-// Enhanced cashier dashboard metrics endpoint
+// Enhanced cashier dashboard metrics endpoint with upfront credit support
 app.get('/api/cashier/dashboard-metrics', async (req, res) => {
   try {
     const { cashierId, shopId, startDate, endDate } = req.query;
@@ -2096,7 +2253,7 @@ app.get('/api/cashier/dashboard-metrics', async (req, res) => {
       });
     }
 
-    console.log('📊 Fetching cashier-specific dashboard metrics...', {
+    console.log('📊 Fetching cashier-specific dashboard metrics with upfront credit support...', {
       cashierId,
       shopId,
       startDate,
@@ -2113,7 +2270,7 @@ app.get('/api/cashier/dashboard-metrics', async (req, res) => {
     const transactionData = await getAllTransactionData(filters);
     const financialStats = transactionData.financialStats;
 
-    // Enhanced cashier-specific metrics
+    // Enhanced cashier-specific metrics with upfront credit support
     const cashierMetrics = {
       // Core metrics for cashier dashboard
       totalSales: financialStats.totalRevenue,
@@ -2125,6 +2282,11 @@ app.get('/api/cashier/dashboard-metrics', async (req, res) => {
       totalCredit: financialStats.totalCredit,
       outstandingCredit: financialStats.outstandingCredit,
       
+      // NEW: Upfront payment metrics
+      totalUpfrontPayments: financialStats.totalUpfrontPayments,
+      totalUpfrontCash: financialStats.totalUpfrontCash,
+      totalUpfrontMpesaBank: financialStats.totalUpfrontMpesaBank,
+      
       // Performance metrics
       itemsSold: financialStats.totalItemsSold,
       averageTransaction: financialStats.averageTransactionValue,
@@ -2135,7 +2297,7 @@ app.get('/api/cashier/dashboard-metrics', async (req, res) => {
       creditCollectionRate: financialStats.creditCollectionRate,
       recognizedCreditRevenue: financialStats.recognizedCreditRevenue,
       
-      // NEW: Immediate revenue tracking
+      // Immediate revenue tracking
       immediateRevenue: financialStats.totalRevenue, // This includes all recognized revenue
       creditImmediateRevenue: financialStats.recognizedCreditRevenue, // Credit portion of immediate revenue
       
@@ -2145,14 +2307,16 @@ app.get('/api/cashier/dashboard-metrics', async (req, res) => {
         endDate: filters.endDate
       },
       cashierId,
-      shopId
+      shopId,
+      upfrontCreditSupport: true // NEW: Indicate support
     };
 
     res.json({
       success: true,
       data: cashierMetrics,
       message: 'Cashier dashboard metrics fetched successfully',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
 
   } catch (error) {
@@ -2707,7 +2871,8 @@ app.post('/api/credits', async (req, res) => {
         paymentMethod: 'initial',
         recordedBy: creditData.recordedBy || 'System',
         cashierName: creditData.cashierName,
-        notes: 'Initial payment'
+        notes: 'Initial payment',
+        isUpfrontPayment: true // NEW: Mark as upfront payment
       }];
     }
 
@@ -2722,8 +2887,9 @@ app.post('/api/credits', async (req, res) => {
       creditId: credit._id,
       customerName: credit.customerName,
       totalAmount: credit.totalAmount,
-      balanceDue: credit.balanceDue, // UPDATED: This now shows only the remaining balance
-      status: credit.status
+      balanceDue: credit.balanceDue, // This now shows only the remaining balance
+      status: credit.status,
+      upfrontPayment: credit.upfrontPayment // NEW: Log upfront payment details
     });
 
     res.status(201).json({
@@ -2801,12 +2967,14 @@ app.get('/api/credits', async (req, res) => {
         totalCredits: credits.length,
         totalCreditAmount: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.totalAmount), 0),
         totalPaid: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.amountPaid), 0),
-        totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0), // UPDATED: This now shows only the remaining balance
+        totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0), // This now shows only the remaining balance
+        totalUpfrontPayments: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.upfrontPayment?.amount || 0), 0), // NEW: Upfront payments
         overdueCount: credits.filter(c => 
           c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0
         ).length
       },
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
   } catch (error) {
     console.error('Error fetching credits:', error);
@@ -2914,7 +3082,8 @@ app.get('/api/credits/:id', async (req, res) => {
     res.json({
       success: true,
       data: credit,
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
   } catch (error) {
     console.error('Error fetching credit record:', error);
@@ -2964,7 +3133,7 @@ app.patch('/api/credits/:id/payment', async (req, res) => {
 
     // Update amounts
     credit.amountPaid = newAmountPaid;
-    credit.balanceDue = newBalanceDue; // UPDATED: This now shows only the remaining balance
+    credit.balanceDue = newBalanceDue; // This now shows only the remaining balance
 
     // Update status
     let newStatus = credit.status;
@@ -2985,7 +3154,7 @@ app.patch('/api/credits/:id/payment', async (req, res) => {
       await models.Transaction.findByIdAndUpdate(credit.transactionId, {
         amountPaid: newAmountPaid,
         recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue, // UPDATED: This now shows only the remaining balance
+        outstandingRevenue: newBalanceDue, // This now shows only the remaining balance
         creditStatus: newStatus,
         updatedAt: new Date()
       });
@@ -2999,7 +3168,7 @@ app.patch('/api/credits/:id/payment', async (req, res) => {
       creditId: req.params.id,
       paymentAmount,
       newAmountPaid,
-      newBalanceDue, // UPDATED: This now shows only the remaining balance
+      newBalanceDue, // This now shows only the remaining balance
       status: newStatus
     });
 
@@ -3050,7 +3219,8 @@ app.get('/api/transactions/shop-performance/:shopId', async (req, res) => {
       cogsMethodology: 'complete_sales_plus_credit_sales_made',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
 
   } catch (error) {
@@ -3085,7 +3255,8 @@ app.get('/api/debug/database', async (req, res) => {
       cogsCalculation: 'complete_sales_plus_credit_sales_made',
       creditPartialPayment: 'supported',
       immediateRevenueTracking: 'enabled',
-      creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
   } catch (error) {
     res.status(500).json({
@@ -3112,7 +3283,8 @@ app.get('/', (req, res) => {
     cogsCalculation: 'complete_sales_plus_credit_sales_made',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
-    creditDisplayLogic: 'balance_due_only' // NEW: Indicate updated credit display logic
+    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+    creditDisplayLogic: 'balance_due_only'
   });
 });
 
@@ -3142,7 +3314,8 @@ const startServer = async () => {
       console.log(`🧮 COGS Calculation: Complete Sales + Credit Sales Made`);
       console.log(`💳 Credit Partial Payment: SUPPORTED ✅`);
       console.log(`💰 Immediate Revenue Tracking: ENABLED ✅`);
-      console.log(`📈 Credit Display: BALANCE DUE ONLY ✅`); // NEW: Indicate the update
+      console.log(`🎯 Upfront Credit Support: FULLY ENABLED ✅`); // NEW: Indicate the update
+      console.log(`📈 Credit Display: BALANCE DUE ONLY ✅`);
       console.log(`🔧 ALL ENDPOINTS AVAILABLE:`);
       console.log(`   - GET  /api/shops ✅`);
       console.log(`   - GET  /api/products ✅`);
@@ -3151,7 +3324,7 @@ const startServer = async () => {
       console.log(`   - GET  /api/credits ✅`);
       console.log(`   - GET  /api/transactions/combined ✅`);
       console.log(`   - GET  /api/cashier/dashboard-metrics ✅`);
-      console.log(`   - POST /api/transactions ✅ (Credit Partial Payment Supported)`);
+      console.log(`   - POST /api/transactions ✅ (Upfront Credit Supported)`);
       console.log(`   - POST /api/credits ✅ (No Duplication)`);
       console.log('='.repeat(60));
     });
