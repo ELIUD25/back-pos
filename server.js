@@ -1584,35 +1584,29 @@ app.get('/api/health', (req, res) => {
 
 // ==================== AUTHENTICATION ROUTES ====================
 
-// Request secure login code
-app.post('/api/auth/request-code',
-  [
-    body('email').isEmail().normalizeEmail()
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid email address',
-          details: errors.array()
-        });
-      }
+app.post('/api/auth/request-code', async (req, res) => {
+  try {
+    // Check if models are initialized
+    if (!models.User || !models.SecureCode) {
+      return res.status(500).json({
+        success: false,
+        message: 'Server initialization in progress. Please try again in a moment.'
+      });
+    }
 
-      const { email } = req.body;
-      console.log('📧 Secure code request for:', email);
+    const { email } = req.body;
+    console.log('📧 Secure code request for:', email);
 
-      const user = await models.User.findOne({ email }) || 
-                   await models.Cashier.findOne({ email });
+    // Add null checks
+    const user = await models.User?.findOne({ email }) || 
+                 await models.Cashier?.findOne({ email });
 
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'No account found with this email address'
-        });
-      }
-
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address'
+      });
+    }
       const secureCode = generateSecureCode();
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + 15);
