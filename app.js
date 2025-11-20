@@ -4,21 +4,44 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // Enhanced CORS Configuration
+// const corsOptions = {
+//   // origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+//   credentials: true,
+//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: [
+//     'Content-Type', 
+//     'Accept', 
+//     'X-Requested-With'
+//   ],
+//   exposedHeaders: [],
+//   maxAge: 86400 // 24 hours for preflight cache
+// };
+
+// app.use(cors(corsOptions));
+
+// Enhanced CORS Configuration for Vercel
 const corsOptions = {
-  // origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  origin: process.env.FRONTEND_URL || 'https://seridah-chemist.vercel.app',
+  origin: [
+    'https://seridah-chemist.vercel.app',
+    'https://back-pos-five.vercel.app',
+    'http://localhost:3000' // for local development
+  ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
     'Content-Type', 
+    'Authorization',
     'Accept', 
     'X-Requested-With'
   ],
-  exposedHeaders: [],
-  maxAge: 86400 // 24 hours for preflight cache
+  exposedHeaders: ['Authorization'],
+  maxAge: 86400
 };
 
 app.use(cors(corsOptions));
+
+
+
 
 // Essential Middleware
 app.use(express.json());
