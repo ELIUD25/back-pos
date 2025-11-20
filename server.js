@@ -3769,9 +3769,6 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 // ==================== DATABASE CONNECTION ====================
-
-// ==================== UPDATED DATABASE CONNECTION ====================
-
 const connectDB = async () => {
   try {
     // If already connected, return
@@ -3789,45 +3786,48 @@ const connectDB = async () => {
       return false;
     }
 
-    console.log('🔗 Attempting MongoDB connection...');
+    console.log('🔗 Connecting to MongoDB on Vercel...');
     
-    // UPDATED: Modern connection options without deprecated parameters
+    // Vercel-optimized connection options
     const options = {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
+      bufferCommands: false,
+      bufferMaxEntries: 0,
       maxPoolSize: 10,
+      minPoolSize: 1,
       retryWrites: true,
       w: 'majority'
     };
 
-    console.log('📝 Using connection options:', options);
+    console.log('📝 Using Vercel-optimized connection options:', options);
 
-    // Force close any existing connections first
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.connection.close();
-      console.log('🔒 Closed existing MongoDB connection');
-    }
-
-    // Connect with timeout
+    // ACTUALLY WAIT for connection to complete
     await mongoose.connect(connectionString, options);
     
-    console.log('✅ MongoDB connected successfully');
-    console.log('📊 Database:', mongoose.connection.name);
-    console.log('🏠 Host:', mongoose.connection.host);
-    
-    serverStatus.services.database = true;
-    return true;
+    // Only mark as connected when readyState is actually 1
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ MongoDB connected successfully on Vercel');
+      serverStatus.services.database = true;
+      return true;
+    } else {
+      console.log('❌ MongoDB connection incomplete on Vercel');
+      serverStatus.services.database = false;
+      return false;
+    }
     
   } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
+    console.error('❌ MongoDB connection failed on Vercel:', error.message);
     console.error('🔧 Error details:', {
       name: error.name,
-      code: error.code
+      code: error.code,
+      message: error.message
     });
     serverStatus.services.database = false;
     return false;
   }
 };
+
 
 const connectWithRetry = async (retries = 5, delay = 5000) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -4690,6 +4690,36 @@ const initializeEmail = async () => {
     return false;
   }
 };
+app.get('/api/vercel-status', (req, res) => {
+  res.json({
+    vercel: {
+      isVercel: process.env.VERCEL === '1',
+      region: process.env.VERCEL_REGION || 'unknown',
+      environment: process.env.VERCEL_ENV || 'unknown',
+      url: process.env.VERCEL_URL || 'unknown'
+    },
+    database: {
+      connectionString: process.env.MONGODB_URI ? 'set' : 'not set',
+      readyState: mongoose.connection.readyState,
+      readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState]
+    },
+    serverStatus: serverStatus,
+    timestamp: new Date().toISOString()
+  });
+});
+
+function getMongoDBStateText(readyState) {
+  const states = {
+    0: 'disconnected',
+    1: 'connected', 
+    2: 'connecting',
+    3: 'disconnecting',
+    99: 'uninitialized'
+  };
+  return states[readyState] || 'unknown';
+}
+
+
 
 const initializeServer = async () => {
   if (serverStatus.isInitializing || serverStatus.isInitialized) {
@@ -4700,58 +4730,64 @@ const initializeServer = async () => {
   serverStatus.isInitializing = true;
   serverStatus.initializationStartTime = new Date();
   
-  console.log('🚀 Starting server initialization...');
+  console.log('🚀 Starting Vercel server initialization...');
 
   try {
-    // Step 1: Database connection with retry
-    console.log('📦 Step 1: Connecting to database...');
-    const dbConnected = await connectWithRetry(3, 3000);
-    
-    if (!dbConnected) {
-      console.log('🟡 Database connection failed - running in limited mode');
-      // We'll continue without database but mark it as failed
-      serverStatus.services.database = false;
-    } else {
-      serverStatus.services.database = true;
-      
-      // Step 2: Create models (only if DB connected)
-      console.log('📦 Step 2: Creating models...');
-      models = createModels();
-      serverStatus.services.models = true;
-
-      // Step 3: Create default admin (only if DB connected)
-      console.log('📦 Step 3: Setting up default admin...');
-      await createDefaultAdmin();
-    }
-
-    // Step 4: Initialize email service (non-blocking, works without DB)
-    console.log('📦 Step 4: Initializing email service...');
-    initializeEmail().then(success => {
-      serverStatus.services.email = success;
-    }).catch(error => {
-      console.error('❌ Email service initialization failed:', error);
-      serverStatus.services.email = false;
+    // Add timeout for Vercel
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Vercel initialization timeout')), 15000);
     });
 
-    // Mark initialization as complete
-    serverStatus.isInitialized = true;
-    serverStatus.isInitializing = false;
-    
-    const initTime = new Date() - serverStatus.initializationStartTime;
-    console.log(`✅ Server initialization completed in ${initTime}ms`);
-    
-    // Log final status
-    console.log('📊 Final Server Status:', {
-      database: serverStatus.services.database ? '✅ Connected' : '❌ Disconnected',
-      models: serverStatus.services.models ? '✅ Loaded' : '❌ Not loaded',
-      email: serverStatus.services.email ? '✅ Configured' : '❌ Disabled'
-    });
+    // Race between initialization and timeout
+    await Promise.race([
+      (async () => {
+        // Step 1: Database connection (WAIT for it to complete)
+        console.log('📦 Step 1: Connecting to database on Vercel...');
+        const dbConnected = await connectDB();
+        
+        if (!dbConnected) {
+          throw new Error('Database connection failed on Vercel');
+        }
+        
+        // Step 2: Create models (only if DB is connected)
+        console.log('📦 Step 2: Creating enhanced models...');
+        models = createModels();
+        serverStatus.services.models = true;
+
+        // Step 3: Initialize email service (non-blocking)
+        console.log('📦 Step 3: Initializing email service...');
+        initializeEmail().then(success => {
+          serverStatus.services.email = success;
+          console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
+        }).catch(error => {
+          console.error('❌ Email service initialization failed:', error);
+          serverStatus.services.email = false;
+        });
+
+        // Step 4: Create default admin (non-blocking, only if DB connected)
+        console.log('📦 Step 4: Setting up default admin...');
+        if (dbConnected) {
+          createDefaultAdmin().then(() => {
+            console.log('✅ Default admin setup completed');
+          }).catch(error => {
+            console.log('⚠️ Default admin setup failed:', error.message);
+          });
+        }
+
+        // Mark initialization as complete
+        serverStatus.isInitialized = true;
+        serverStatus.isInitializing = false;
+        
+        const initTime = new Date() - serverStatus.initializationStartTime;
+        console.log(`✅ Vercel server initialization completed in ${initTime}ms`);
+      })(),
+      timeoutPromise
+    ]);
     
   } catch (error) {
-    console.error('💥 Server initialization failed:', error);
+    console.error('💥 Vercel server initialization failed:', error);
     serverStatus.isInitializing = false;
     serverStatus.isInitialized = false;
-    
     console.log('🟡 Continuing with limited functionality');
   }
 };
@@ -5001,12 +5037,16 @@ app.get('/api/health', async (req, res) => {
   const dbStatus = dbReadyState === 1 ? 'connected' : 'disconnected';
   const emailStatus = emailTransporter ? 'configured' : 'disabled';
   
+  // Check if we're on Vercel
+  const isVercel = process.env.VERCEL === '1';
+  
   const healthStatus = {
     success: true,
     status: dbStatus === 'connected' ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
-    app: 'Stanzo Shop Management',
-    version: '1.0.0',
+    environment: isVercel ? 'vercel' : 'local',
+    app: process.env.APP_NAME || 'Stanzo Shop Management',
+    version: process.env.APP_VERSION || '1.0.0',
     database: dbStatus,
     email: emailStatus,
     authentication: 'email-based-secure-code',
@@ -5016,21 +5056,30 @@ app.get('/api/health', async (req, res) => {
     upfrontCreditSupport: 'fully_enabled',
     creditDisplayLogic: 'balance_due_only',
     
+    // Vercel-specific info
+    vercel: isVercel ? {
+      region: process.env.VERCEL_REGION || 'unknown',
+      environment: process.env.VERCEL_ENV || 'unknown'
+    } : null,
+    
+    // Add initialization status
     initialization: {
       isInitialized: serverStatus.isInitialized,
       isInitializing: serverStatus.isInitializing,
       services: serverStatus.services
     },
     
+    // Add detailed connection information
     connection: {
       mongodb: {
         readyState: dbReadyState,
-        readyStateText: ['disconnected', 'connected', 'connecting', 'disconnecting'][dbReadyState],
+        readyStateText: getMongoDBStateText(dbReadyState),
         host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured'
       }
     }
   };
 
+  // Status messages based on actual state
   if (dbReadyState === 0) {
     healthStatus.status = 'disconnected';
     healthStatus.message = 'Database disconnected - check MONGODB_URI and network connection';
@@ -5040,9 +5089,6 @@ app.get('/api/health', async (req, res) => {
   } else if (dbReadyState === 1) {
     healthStatus.status = 'healthy';
     healthStatus.message = 'All systems operational';
-  } else if (dbReadyState === 3) {
-    healthStatus.status = 'disconnecting';
-    healthStatus.message = 'Database disconnecting';
   }
 
   res.json(healthStatus);
