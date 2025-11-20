@@ -944,6 +944,37 @@ const generateAuthToken = (userId, email, role) => {
 };
 
 // ==================== MIDDLEWARE SETUP ====================
+// ==================== GLOBAL INITIALIZATION CHECK MIDDLEWARE ====================
+
+// Add this RIGHT AFTER your existing middleware but BEFORE your routes
+app.use('/api/*', (req, res, next) => {
+  // Allow health check to pass through always
+  if (req.path === '/api/health' || req.path === '/health' || req.path === '/api/health/') {
+    return next();
+  }
+
+  // Block all other API calls if server is not initialized
+  if (!serverStatus.isInitialized) {
+    console.log('🚫 Blocking API call - Server initializing:', {
+      path: req.path,
+      method: req.method,
+      initialized: serverStatus.isInitialized,
+      initializing: serverStatus.isInitializing
+    });
+    
+    return res.status(503).json({
+      success: false,
+      message: 'Server is initializing. Please try again in a moment.',
+      code: 'SERVER_INITIALIZING',
+      endpoint: req.path,
+      method: req.method,
+      timestamp: new Date().toISOString(),
+      retryAfter: 30 // seconds
+    });
+  }
+
+  next();
+});
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -3469,23 +3500,32 @@ app.use('/api/*', (req, res) => {
 
 // ==================== SERVER START ====================
 
+
+// ==================== ENHANCED SERVER STARTUP ====================
+
 const startServer = async () => {
   try {
-    console.log('🚀 Starting Complete Stanzo Shop Management Server...');
-    console.log(`📋 App: ${process.env.APP_NAME || 'Stanzo Shop Management'}`);
+    console.log('🚀 Starting Complete Seridah Chemist Management Server...');
+    console.log(`📋 App: ${process.env.APP_NAME || 'Seridah Chemist Management'}`);
     
-    await connectDB();
-    
+    // Start the server FIRST, then initialize in background
     const server = app.listen(PORT, () => {
-      console.log(`\n🎉 Complete Server Started Successfully!`);
+      console.log(`\n🎉 Server listening on port ${PORT}`);
+      console.log('⏳ Initialization in progress...');
+      console.log('📡 Health endpoint available at: http://localhost:' + PORT + '/api/health');
       console.log('='.repeat(60));
-      console.log(`📍 Port: ${PORT}`);
-      console.log(`🔗 URL: http://localhost:${PORT}`);
+    });
+
+    // Initialize server in background (non-blocking)
+    initializeServer().then(() => {
+      console.log('\n✅ Server initialization completed successfully!');
+      console.log('🟢 All endpoints are now available');
+      console.log('='.repeat(60));
       console.log(`📊 Database: ${mongoose.connection.name}`);
       console.log(`🧮 COGS Calculation: Complete Sales + Credit Sales Made`);
       console.log(`💳 Credit Partial Payment: SUPPORTED ✅`);
       console.log(`💰 Immediate Revenue Tracking: ENABLED ✅`);
-      console.log(`🎯 Upfront Credit Support: FULLY ENABLED ✅`); // NEW: Indicate the update
+      console.log(`🎯 Upfront Credit Support: FULLY ENABLED ✅`);
       console.log(`📈 Credit Display: BALANCE DUE ONLY ✅`);
       console.log(`🔧 ALL ENDPOINTS AVAILABLE:`);
       console.log(`   - GET  /api/shops ✅`);
@@ -3498,6 +3538,19 @@ const startServer = async () => {
       console.log(`   - POST /api/transactions ✅ (Upfront Credit Supported)`);
       console.log(`   - POST /api/credits ✅ (No Duplication)`);
       console.log('='.repeat(60));
+    }).catch(error => {
+      console.error('\n💥 Server initialization failed:', error);
+      console.log('🔴 Some endpoints may not work properly');
+      console.log('🟡 Health endpoint should still be available');
+    });
+
+    // Graceful shutdown handling
+    process.on('SIGTERM', () => {
+      console.log('🛑 SIGTERM received, shutting down gracefully');
+      server.close(() => {
+        console.log('✅ Process terminated');
+        process.exit(0);
+      });
     });
 
     return server;
