@@ -17,7 +17,10 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// ==================== SERVER STATUS ====================
+
+
+
+// Add at the top of your server, after imports
 let serverStatus = {
   isInitialized: false,
   isInitializing: false,
@@ -30,77 +33,7 @@ let serverStatus = {
   }
 };
 
-// ==================== MIDDLEWARE SETUP ====================
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-
-app.use((req, res, next) => {
-  res.removeHeader('X-Powered-By');
-  next();
-});
-
-app.use(compression());
-
-// SINGLE CORS CONFIGURATION - No duplicates
-app.use(cors({
-  origin: [
-    'https://seridah-chemist.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
-// Handle preflight requests
-app.options('*', cors());
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { success: false, message: 'Too many requests' }
-});
-app.use('/api/', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many authentication attempts' }
-});
-
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many email requests' }
-});
-
-app.use('/api/auth/request-code', emailLimiter);
-app.use('/api/auth/verify-code', authLimiter);
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
-
-// Session middleware
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'stanzo_session_secret_change_in_production',
-  resave: false,
-  saveUninitialized: false,
-  store: MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0',
-    collectionName: 'sessions'
-  }),
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
-  }
-}));
-
-// ==================== INITIALIZATION ====================
+// Enhanced initialization function
 const initializeServer = async () => {
   if (serverStatus.isInitializing || serverStatus.isInitialized) {
     console.log('🔄 Server initialization already in progress or completed');
@@ -160,34 +93,17 @@ const initializeServer = async () => {
   }
 };
 
-// ==================== DATABASE CONNECTION ====================
-const connectDB = async () => {
-  try {
-    const connectionString = process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0';
-    
-    console.log('🔗 Connecting to MongoDB...');
-    
-    await mongoose.connect(connectionString, {
-      serverSelectionTimeoutMS: 15000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 25,
-      minPoolSize: 5,
-      retryWrites: true
-    });
-    
-    console.log('✅ MongoDB connected successfully');
-    
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    process.exit(1);
-  }
-};
 
-// ==================== MODELS ====================
+
+
+
+
+// ==================== ENHANCED MODELS ====================
+
 const createModels = () => {
   console.log('🔧 Creating enhanced models...');
   
-  // Product Schema
+  // Enhanced Product Schema
   const productSchema = new mongoose.Schema({
     name: { type: String, required: true },
     category: { type: String, default: 'Uncategorized' },
@@ -205,7 +121,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Shop Schema
+  // Enhanced Shop Schema
   const shopSchema = new mongoose.Schema({
     name: { type: String, required: true },
     location: String,
@@ -218,7 +134,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Cashier Schema
+  // Enhanced Cashier Schema
   const cashierSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true },
@@ -233,7 +149,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Expense Schema
+  // Enhanced Expense Schema
   const expenseSchema = new mongoose.Schema({
     description: { type: String, required: true },
     amount: { type: Number, required: true },
@@ -251,7 +167,7 @@ const createModels = () => {
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Transaction Schema
+  // ENHANCED Transaction Schema with Complete Upfront Credit Support
   const transactionSchema = new mongoose.Schema({
     transactionNumber: { type: String, required: true, unique: true },
     totalAmount: { type: Number, required: true },
@@ -280,23 +196,33 @@ const createModels = () => {
     shopName: String,
     saleDate: { type: Date, default: Date.now },
     status: { type: String, default: 'completed' },
+    
+    // Enhanced Credit Fields
     isCreditTransaction: { type: Boolean, default: false },
     creditStatus: { type: String, enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
     recognizedRevenue: { type: Number, default: 0 },
     outstandingRevenue: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0 },
     dueDate: Date,
+    
+    // Credit sale classification fields
     creditShopName: String,
     creditShopId: String,
     shopClassification: String,
+    
+    // ENHANCED: Payment split tracking with upfront credit support
     paymentSplit: {
       cash: { type: Number, default: 0 },
       bank_mpesa: { type: Number, default: 0 },
       credit: { type: Number, default: 0 },
-      upfront_cash: { type: Number, default: 0 },
-      upfront_bank_mpesa: { type: Number, default: 0 }
+      upfront_cash: { type: Number, default: 0 },        // NEW: Track upfront cash separately
+      upfront_bank_mpesa: { type: Number, default: 0 }   // NEW: Track upfront bank/mpesa separately
     },
+    
+    // Immediate revenue tracking for cashier
     immediateRevenue: { type: Number, default: 0 },
+    
+    // NEW: Upfront payment details for credit transactions
     upfrontPaymentDetails: {
       amount: { type: Number, default: 0 },
       method: String,
@@ -305,11 +231,12 @@ const createModels = () => {
         bank_mpesa: { type: Number, default: 0 }
       }
     },
+    
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // Credit Schema
+  // ENHANCED Credit Schema with upfront payment tracking
   const creditSchema = new mongoose.Schema({
     transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true },
     customerName: { type: String, required: true },
@@ -327,7 +254,7 @@ const createModels = () => {
       recordedBy: String,
       cashierName: String,
       notes: String,
-      isUpfrontPayment: { type: Boolean, default: false }
+      isUpfrontPayment: { type: Boolean, default: false } // NEW: Track if payment was upfront
     }],
     shop: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop' },
     shopId: String,
@@ -339,6 +266,8 @@ const createModels = () => {
     cashierName: String,
     recordedBy: String,
     notes: String,
+    
+    // NEW: Upfront payment tracking
     upfrontPayment: {
       amount: { type: Number, default: 0 },
       method: String,
@@ -347,11 +276,12 @@ const createModels = () => {
         bank_mpesa: { type: Number, default: 0 }
       }
     },
+    
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
 
-  // User Schema
+  // User Schema (for admin)
   const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     name: { type: String, required: true },
@@ -371,9 +301,10 @@ const createModels = () => {
     used: { type: Boolean, default: false }
   });
 
+  // Index for automatic expiration
   secureCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-  // Create models
+  // Create or get models
   const models = {
     Product: mongoose.models.Product || mongoose.model('Product', productSchema),
     Shop: mongoose.models.Shop || mongoose.model('Shop', shopSchema),
@@ -391,7 +322,8 @@ const createModels = () => {
 
 let models = {};
 
-// ==================== UTILITIES ====================
+// ==================== UPDATED CALCULATION UTILITIES WITH COMPLETE UPFRONT CREDIT SUPPORT ====================
+
 const CalculationUtils = {
   safeNumber: (value, defaultValue = 0) => {
     if (value === null || value === undefined || value === '') return defaultValue;
@@ -417,16 +349,22 @@ const CalculationUtils = {
     return safeRevenue > 0 ? (safeProfit / safeRevenue) * 100 : 0;
   },
 
+  // UPDATED: Calculate COGS for transactions array - includes complete sales + credit sales made
   calculateCOGS: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
+    
     return transactions.reduce((sum, transaction) => {
+      // Include COGS for both complete sales and credit sales
+      // Credit sales contribute to COGS when the sale is made, not when payment is received
       const cost = CalculationUtils.safeNumber(transaction.cost);
       return sum + cost;
     }, 0);
   },
 
+  // ENHANCED: Calculate cost from items with product data integration
   calculateCostFromItems: async (transaction, products = []) => {
     try {
+      // If cost is already provided and valid, use it
       if (transaction.cost && CalculationUtils.safeNumber(transaction.cost) > 0) {
         return CalculationUtils.safeNumber(transaction.cost);
       }
@@ -435,19 +373,25 @@ const CalculationUtils = {
         return CalculationUtils.safeNumber(transaction.totalCost);
       }
 
+      // Calculate cost from items
       if (transaction.items && Array.isArray(transaction.items)) {
         let totalCost = 0;
         
         for (const item of transaction.items) {
           const quantity = CalculationUtils.safeNumber(item.quantity, 1);
+          
+          // Try to get cost from different sources in priority order
           let itemCost = 0;
           
+          // Priority 1: Direct cost field in item
           if (item.cost && CalculationUtils.safeNumber(item.cost) > 0) {
             itemCost = CalculationUtils.safeNumber(item.cost);
           }
+          // Priority 2: Buying price field in item
           else if (item.buyingPrice && CalculationUtils.safeNumber(item.buyingPrice) > 0) {
             itemCost = CalculationUtils.safeNumber(item.buyingPrice);
           }
+          // Priority 3: Look up product buying price from products array
           else if (item.productId && products.length > 0) {
             const product = products.find(p => 
               p._id && item.productId && 
@@ -457,15 +401,19 @@ const CalculationUtils = {
             
             if (product) {
               itemCost = CalculationUtils.safeNumber(product.buyingPrice);
+              console.log(`📦 Found product buying price for ${product.name}: ${itemCost}`);
             }
           }
+          // Priority 4: Use a default cost estimation (30% of price as fallback)
           else if (item.price && CalculationUtils.safeNumber(item.price) > 0) {
-            itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
+            itemCost = CalculationUtils.safeNumber(item.price) * 0.3; // Estimate 30% cost
+            console.log(`⚠️ Using estimated cost for item: ${itemCost} (30% of price ${item.price})`);
           }
 
           totalCost += itemCost * quantity;
         }
         
+        console.log(`🧮 Calculated cost for transaction ${transaction._id}: ${totalCost} from ${transaction.items.length} items`);
         return totalCost;
       }
       
@@ -476,33 +424,42 @@ const CalculationUtils = {
     }
   },
 
+  // ENHANCED: Process single transaction with comprehensive cost calculation and upfront credit support
   processSingleTransaction: async (transaction, products = []) => {
     try {
-      if (!transaction) return { totalAmount: 0, cost: 0, profit: 0, profitMargin: 0, isCreditTransaction: false, recognizedRevenue: 0, outstandingRevenue: 0, amountPaid: 0, creditStatus: 'completed', itemsCount: 0, displayDate: new Date().toLocaleString('en-KE') };
+      if (!transaction) return CalculationUtils.createFallbackTransaction();
 
+      // ENHANCED: Multiple ways to detect credit transactions
       const isCredit = transaction.paymentMethod === 'credit' || 
                       transaction.isCredit === true || 
                       transaction.transactionType === 'credit' ||
                       transaction.isCreditTransaction === true ||
                       transaction.status === 'credit';
       
+      // Use server-calculated values when available, otherwise calculate
       const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) || 
                          CalculationUtils.safeNumber(transaction.amount) || 0;
       
+      // ENHANCED: Use the new cost calculation function with products data
       const cost = await CalculationUtils.calculateCostFromItems(transaction, products);
       
+      // ENHANCED: Credit management revenue recognition logic with upfront payment support
       const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) || 
                         CalculationUtils.safeNumber(transaction.paidAmount) || 0;
       
+      // UPDATED: For credit transactions, recognized revenue is the amount paid immediately (upfront payment)
       const recognizedRevenue = isCredit ? amountPaid : totalAmount;
+      
       const outstandingRevenue = isCredit ? 
         (CalculationUtils.safeNumber(transaction.outstandingRevenue) || 
          CalculationUtils.safeNumber(transaction.balanceDue) || 
          Math.max(0, totalAmount - amountPaid)) : 0;
 
-      const profit = recognizedRevenue - cost;
+      // Calculate profit metrics
+      const profit = recognizedRevenue - cost; // UPDATED: Profit based on recognized revenue
       const profitMargin = CalculationUtils.calculateProfitMargin(recognizedRevenue, profit);
       
+      // Determine credit status
       let creditStatus = 'completed';
       if (isCredit) {
         if (outstandingRevenue <= 0) {
@@ -513,11 +470,13 @@ const CalculationUtils = {
           creditStatus = 'pending';
         }
         
+        // Check if overdue
         if (transaction.dueDate && new Date(transaction.dueDate) < new Date() && outstandingRevenue > 0) {
           creditStatus = 'overdue';
         }
       }
 
+      // ENHANCED: Calculate payment splits with upfront credit support
       let paymentSplit = transaction.paymentSplit || {
         cash: 0,
         bank_mpesa: 0,
@@ -526,6 +485,7 @@ const CalculationUtils = {
         upfront_bank_mpesa: 0
       };
 
+      // If paymentSplit doesn't have upfront fields, initialize them
       if (!paymentSplit.upfront_cash && !paymentSplit.upfront_bank_mpesa) {
         if (isCredit && transaction.upfrontPaymentDetails) {
           paymentSplit.upfront_cash = CalculationUtils.safeNumber(transaction.upfrontPaymentDetails.split?.cash);
@@ -544,7 +504,7 @@ const CalculationUtils = {
         outstandingRevenue,
         amountPaid,
         creditStatus,
-        paymentSplit,
+        paymentSplit, // ENHANCED: Include updated payment split
         itemsCount: transaction.items ? transaction.items.reduce((sum, item) => 
           sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0,
         displayDate: transaction.displayDate || 
@@ -552,10 +512,31 @@ const CalculationUtils = {
       };
     } catch (error) {
       console.error('❌ Error processing single transaction:', error);
-      return { totalAmount: 0, cost: 0, profit: 0, profitMargin: 0, isCreditTransaction: false, recognizedRevenue: 0, outstandingRevenue: 0, amountPaid: 0, creditStatus: 'completed', itemsCount: 0, displayDate: new Date().toLocaleString('en-KE') };
+      return CalculationUtils.createFallbackTransaction();
     }
   },
 
+  createFallbackTransaction: () => {
+    return {
+      totalAmount: 0,
+      cost: 0,
+      profit: 0,
+      profitMargin: 0,
+      isCreditTransaction: false,
+      recognizedRevenue: 0,
+      outstandingRevenue: 0,
+      amountPaid: 0,
+      creditStatus: 'completed',
+      itemsCount: 0,
+      displayDate: new Date().toLocaleString('en-KE')
+    };
+  },
+
+  calculateTransactionMetrics: (transaction) => {
+    return CalculationUtils.processSingleTransaction(transaction);
+  },
+
+  // UPDATED: Process comprehensive data with accurate COGS calculation and upfront credit support
   processComprehensiveData: async (rawData, selectedShop) => {
     const transactions = rawData.transactions || [];
     const expenses = rawData.expenses || [];
@@ -564,30 +545,45 @@ const CalculationUtils = {
     const shops = rawData.shops || [];
     const cashiers = rawData.cashiers || [];
 
+    console.log('🔄 Processing comprehensive data with enhanced upfront credit support...', {
+      transactions: transactions.length,
+      products: products.length
+    });
+
+    // Enhanced sales with profit calculation using the new processSingleTransaction
     const salesWithProfit = await Promise.all(
       transactions.map(transaction => 
         CalculationUtils.processSingleTransaction(transaction, products)
       )
     );
 
+    // Filter transactions based on shop if provided
     const filteredTransactions = selectedShop && selectedShop !== 'all' ? 
       salesWithProfit.filter(t => 
         t.shop === selectedShop || t.shopId === selectedShop
       ) : salesWithProfit;
 
+    // Calculate all required metrics
     const totalTransactions = filteredTransactions.length;
     const creditTransactions = filteredTransactions.filter(t => t.isCreditTransaction);
     const nonCreditTransactions = filteredTransactions.filter(t => !t.isCreditTransaction);
     const completeTransactions = filteredTransactions.filter(t => t.status === 'completed');
 
+    // ENHANCED Revenue calculations with upfront credit support
     const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const creditSales = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+    
+    // UPDATED COGS CALCULATION: Sum up all transaction costs (both complete + credit sales)
     const costOfGoodsSold = CalculationUtils.calculateCOGS(filteredTransactions);
+    
     const grossProfit = totalRevenue - costOfGoodsSold;
+    
+    // Expense calculations
     const totalExpenses = expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0);
     const netProfit = grossProfit - totalExpenses;
     
+    // ENHANCED Payment method calculations with upfront credit support
     let totalCash = 0;
     let totalMpesaBank = 0;
     let totalCredit = 0;
@@ -595,6 +591,7 @@ const CalculationUtils = {
     let totalUpfrontMpesaBank = 0;
 
     filteredTransactions.forEach(transaction => {
+      // Use paymentSplit with upfront credit support
       if (transaction.paymentSplit) {
         totalCash += CalculationUtils.safeNumber(transaction.paymentSplit.cash);
         totalMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.bank_mpesa);
@@ -602,6 +599,7 @@ const CalculationUtils = {
         totalUpfrontCash += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_cash);
         totalUpfrontMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_bank_mpesa);
       } else {
+        // Fallback calculation based on paymentMethod
         if (transaction.paymentMethod === 'cash') {
           totalCash += CalculationUtils.safeNumber(transaction.recognizedRevenue);
         } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
@@ -609,6 +607,7 @@ const CalculationUtils = {
         } else if (transaction.paymentMethod === 'credit') {
           totalCredit += CalculationUtils.safeNumber(transaction.recognizedRevenue);
         } else if (transaction.paymentMethod === 'cash_bank_mpesa') {
+          // Split evenly as fallback
           const half = CalculationUtils.safeNumber(transaction.recognizedRevenue) / 2;
           totalCash += half;
           totalMpesaBank += half;
@@ -616,9 +615,11 @@ const CalculationUtils = {
       }
     });
 
+    // ENHANCED: Include upfront payments in cash and bank_mpesa totals
     totalCash += totalUpfrontCash;
     totalMpesaBank += totalUpfrontMpesaBank;
     
+    // Credit calculations
     const outstandingCredit = credits
       .filter(credit => credit.status !== 'paid' && 
         (!selectedShop || selectedShop === 'all' || 
@@ -629,7 +630,9 @@ const CalculationUtils = {
     const recognizedCreditRevenue = creditTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const totalUpfrontPayments = creditTransactions.reduce((sum, t) => sum + t.amountPaid, 0);
 
+    // Enhanced financial stats matching the image requirements with upfront credit support
     const financialStats = {
+      // Core metrics from image
       totalSales: totalTransactions,
       creditSales: creditSales,
       nonCreditSales: nonCreditSales,
@@ -643,9 +646,13 @@ const CalculationUtils = {
       totalCredit: totalCredit,
       outstandingCredit: outstandingCredit,
       totalCreditGiven: totalCreditGiven,
+
+      // NEW: Upfront payment metrics
       totalUpfrontPayments: totalUpfrontPayments,
       totalUpfrontCash: totalUpfrontCash,
       totalUpfrontMpesaBank: totalUpfrontMpesaBank,
+
+      // Additional detailed metrics
       creditSalesCount: creditTransactions.length,
       nonCreditSalesCount: nonCreditTransactions.length,
       completeTransactionsCount: completeTransactions.length,
@@ -655,36 +662,193 @@ const CalculationUtils = {
         (recognizedCreditRevenue / totalCreditGiven) * 100 : 0,
       totalItemsSold: filteredTransactions.reduce((sum, t) => sum + t.itemsCount, 0),
       averageTransactionValue: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
+
+      // UPDATED: COGS breakdown for analysis
       cogsBreakdown: {
         total: costOfGoodsSold,
         fromCreditSales: CalculationUtils.calculateCOGS(creditTransactions),
         fromCompleteSales: CalculationUtils.calculateCOGS(nonCreditTransactions)
       },
+
+      // Metadata
       _cogsCalculation: 'complete_sales_plus_credit_sales_made',
       _revenueCalculation: 'recognized_revenue_includes_upfront_payments',
       _paymentTracking: 'payment_split_with_upfront_support',
       _calculatedAt: new Date().toISOString()
     };
 
+    console.log('💰 Final COGS Calculation with Upfront Credit Support:', {
+      totalTransactions,
+      totalRevenue,
+      costOfGoodsSold,
+      grossProfit,
+      netProfit,
+      totalCash,
+      totalMpesaBank,
+      totalCredit,
+      totalUpfrontPayments,
+      cogsBreakdown: financialStats.cogsBreakdown
+    });
+
+    // Sales performance summary
+    const salesPerformanceSummary = {
+      totalSales: financialStats.totalSales,
+      creditSales: financialStats.creditSalesCount,
+      nonCreditSales: financialStats.nonCreditSalesCount,
+      totalRevenue: financialStats.totalRevenue,
+      creditSalesRevenue: financialStats.creditSales,
+      nonCreditSalesRevenue: financialStats.nonCreditSales,
+      totalExpenses: financialStats.totalExpenses,
+      grossProfit: financialStats.grossProfit,
+      netProfit: financialStats.netProfit,
+      costOfGoodsSold: financialStats.costOfGoodsSold,
+      totalMpesaBank: financialStats.totalMpesaBank,
+      totalCash: financialStats.totalCash,
+      totalCredit: financialStats.totalCredit,
+      outstandingCredit: financialStats.outstandingCredit,
+      totalCreditGiven: financialStats.totalCreditGiven,
+      totalUpfrontPayments: financialStats.totalUpfrontPayments,
+      _cogsMethodology: 'complete_sales_plus_credit_sales_made',
+      _revenueMethodology: 'recognized_revenue_includes_upfront_payments'
+    };
+
+    // Calculate top products
+    const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 10);
+    
+    // Calculate shop performance
+    const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
+
     return {
       salesWithProfit: filteredTransactions,
       financialStats,
+      salesPerformanceSummary,
       expenses,
       credits,
       products,
       shops,
       cashiers,
+      performance: {
+        topProducts,
+        shopPerformance,
+        topCashiers: shopPerformance.slice(0, 10)
+      },
+      summary: financialStats,
+      enhancedStats: {
+        salesWithProfit: filteredTransactions,
+        financialStats
+      },
+      comprehensiveReport: {
+        summary: financialStats,
+        transactions: filteredTransactions,
+        expenses,
+        products,
+        credits,
+        shops,
+        cashiers,
+        performance: {
+          topProducts,
+          shopPerformance
+        }
+      },
       timestamp: new Date().toISOString()
     };
+  },
+
+  calculateTopProducts: (transactions, limit = 10) => {
+    if (!Array.isArray(transactions)) return [];
+    
+    const productMap = {};
+    
+    transactions.forEach(transaction => {
+      transaction.items?.forEach(item => {
+        const productId = item.productId?.toString() || item.productName;
+        const productName = item.productName || 'Unknown Product';
+        
+        if (!productMap[productId]) {
+          productMap[productId] = {
+            id: productId,
+            name: productName,
+            totalSold: 0,
+            totalRevenue: 0,
+            totalProfit: 0,
+            totalCost: 0,
+            transactions: 0
+          };
+        }
+        
+        const quantity = CalculationUtils.safeNumber(item.quantity, 1);
+        const revenue = CalculationUtils.safeNumber(item.totalPrice);
+        const cost = CalculationUtils.safeNumber(item.buyingPrice) * quantity;
+        const profit = revenue - cost;
+        
+        productMap[productId].totalSold += quantity;
+        productMap[productId].totalRevenue += revenue;
+        productMap[productId].totalProfit += profit;
+        productMap[productId].totalCost += cost;
+        productMap[productId].transactions += 1;
+      });
+    });
+    
+    return Object.values(productMap)
+      .map(product => ({
+        ...product,
+        profitMargin: CalculationUtils.calculateProfitMargin(product.totalRevenue, product.totalProfit),
+        averagePrice: product.totalSold > 0 ? product.totalRevenue / product.totalSold : 0
+      }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, limit);
+  },
+
+  calculateShopPerformance: (transactions, shops) => {
+    if (!Array.isArray(transactions)) return [];
+    
+    const shopMap = {};
+    
+    transactions.forEach(transaction => {
+      const shopId = transaction.shop || transaction.shopId;
+      if (!shopId) return;
+      
+      if (!shopMap[shopId]) {
+        const shop = shops.find(s => s._id.toString() === shopId.toString()) || 
+                    { name: 'Unknown Shop', location: 'Unknown' };
+        shopMap[shopId] = {
+          id: shopId,
+          name: shop.name,
+          location: shop.location,
+          revenue: 0,
+          transactions: 0,
+          profit: 0,
+          cost: 0,
+          itemsSold: 0
+        };
+      }
+      
+      shopMap[shopId].revenue += CalculationUtils.safeNumber(transaction.recognizedRevenue);
+      shopMap[shopId].transactions += 1;
+      shopMap[shopId].profit += CalculationUtils.safeNumber(transaction.profit);
+      shopMap[shopId].cost += CalculationUtils.safeNumber(transaction.cost);
+      shopMap[shopId].itemsSold += CalculationUtils.safeNumber(transaction.itemsCount);
+    });
+    
+    return Object.values(shopMap)
+      .map(shop => ({
+        ...shop,
+        profitMargin: CalculationUtils.calculateProfitMargin(shop.revenue, shop.profit),
+        averageTransaction: shop.transactions > 0 ? shop.revenue / shop.transactions : 0
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
   }
 };
 
-// ==================== EMAIL SERVICE ====================
+// ==================== EMAIL CONFIGURATION ====================
+
 const createEmailTransporter = () => {
   try {
     const emailUser = process.env.EMAIL_USER || 'chemistseridah@gmail.com';
     const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
 
+    console.log('📧 Configuring email transporter...');
+    
     if (!emailUser || !emailPass) {
       throw new Error('Email credentials not configured');
     }
@@ -724,7 +888,8 @@ const initializeEmail = async () => {
   }
 };
 
-// ==================== AUTHENTICATION ====================
+// ==================== SECURE CODE AUTHENTICATION ====================
+
 const generateSecureCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
@@ -778,46 +943,62 @@ const generateAuthToken = (userId, email, role) => {
   );
 };
 
-const createDefaultAdmin = async () => {
-  try {
-    const adminEmail = process.env.ADMIN_EMAIL || 'chemistseridah@gmail.com';
-    
-    const existingAdmin = await models.User.findOne({ email: adminEmail });
-    if (!existingAdmin) {
-      await models.User.create({
-        email: adminEmail,
-        name: 'System Administrator',
-        role: 'admin'
-      });
-      console.log('✅ Default admin user created');
-    } else {
-      console.log('✅ Admin user already exists');
-    }
-  } catch (error) {
-    console.log('⚠️ Could not create admin user:', error.message);
-  }
-};
+// ==================== MIDDLEWARE SETUP ====================
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
-// ==================== MIDDLEWARE ====================
-app.use('/api/*', (req, res, next) => {
-  if (req.path === '/api/health' || req.path === '/health' || req.path === '/api/health/') {
-    return next();
-  }
-
-  if (!serverStatus.isInitialized) {
-    return res.status(503).json({
-      success: false,
-      message: 'Server is initializing. Please try again in a moment.',
-      code: 'SERVER_INITIALIZING',
-      endpoint: req.path,
-      method: req.method,
-      timestamp: new Date().toISOString(),
-      retryAfter: 30
-    });
-  }
-
+app.use((req, res, next) => {
+  res.removeHeader('X-Powered-By');
   next();
 });
+
+app.use(compression());
+
+// SINGLE CORS CONFIGURATION - Remove duplicates by keeping only this one
+app.use(cors({
+  origin: [
+    'https://seridah-chemist.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: 'Too many requests' }
+});
+app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many authentication attempts' }
+});
+
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many email requests' }
+});
+
+app.use('/api/auth/request-code', emailLimiter);
+app.use('/api/auth/verify-code', authLimiter);
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use(morgan('dev'));
+
+// ==================== AUTHENTICATION MIDDLEWARE ====================
 
 const verifyToken = (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '') || 
@@ -842,7 +1023,8 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// ==================== DATA FETCHING ====================
+// ==================== ENHANCED TRANSACTION DATA FETCHING ====================
+
 const getAllTransactionData = async (filters = {}) => {
   try {
     const {
@@ -854,10 +1036,13 @@ const getAllTransactionData = async (filters = {}) => {
       status
     } = filters;
 
-    let filter = { 
-      status: { $in: ['completed', 'credit'] }
-    };
+    console.log('📊 Fetching enhanced transaction data with filters:', filters);
 
+    // FIX: Include both completed AND credit transactions
+    let filter = { 
+      status: { $in: ['completed', 'credit'] } // Include both statuses
+    };
+    // Date filter
     if (startDate && endDate) {
       filter.saleDate = {
         $gte: new Date(startDate),
@@ -865,6 +1050,7 @@ const getAllTransactionData = async (filters = {}) => {
       };
     }
 
+    // Shop filter
     if (shopId && shopId !== 'all') {
       filter.$or = [
         { shop: shopId },
@@ -872,6 +1058,7 @@ const getAllTransactionData = async (filters = {}) => {
       ];
     }
 
+    // Cashier filter
     if (cashierId && cashierId !== 'all') {
       filter.$or = [
         { cashierId: cashierId },
@@ -879,6 +1066,7 @@ const getAllTransactionData = async (filters = {}) => {
       ];
     }
 
+    // Payment method filter
     if (paymentMethod && paymentMethod !== 'all') {
       if (paymentMethod === 'digital') {
         filter.paymentMethod = { $in: ['mpesa', 'bank', 'card'] };
@@ -889,6 +1077,7 @@ const getAllTransactionData = async (filters = {}) => {
       }
     }
 
+    // Fetch all data in parallel
     const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
       models.Transaction.find(filter)
         .populate('shop', 'name location type')
@@ -898,7 +1087,7 @@ const getAllTransactionData = async (filters = {}) => {
         .lean(),
       models.Shop.find().lean(),
       models.Cashier.find().lean(),
-      models.Product.find().lean(),
+      models.Product.find().lean(), // Ensure all products are fetched for cost calculation
       models.Expense.find(startDate && endDate ? {
         date: { $gte: new Date(startDate), $lte: new Date(endDate) }
       } : {}).populate('shop', 'name').lean(),
@@ -907,11 +1096,14 @@ const getAllTransactionData = async (filters = {}) => {
       } : {}).populate('transactionId').populate('shop').populate('cashierId').lean()
     ]);
 
+    console.log(`✅ Enhanced transaction data fetched: ${transactions.length} transactions, ${products.length} products, ${credits.length} credits`);
+
+    // Process data using enhanced utility
     const processedData = await CalculationUtils.processComprehensiveData({
       transactions,
       shops,
       cashiers,
-      products,
+      products, // Pass products for cost calculation
       expenses,
       credits
     }, shopId);
@@ -924,284 +1116,30 @@ const getAllTransactionData = async (filters = {}) => {
   }
 };
 
-// ==================== API ROUTES ====================
+// ==================== ENHANCED CREDIT SALE WITH COMPLETE UPFRONT PAYMENT SUPPORT ====================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    app: process.env.APP_NAME || 'Seridah Chemist Management',
-    version: process.env.APP_VERSION || '1.0.0',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    email: emailTransporter ? 'configured' : 'disabled'
-  });
-});
-
-// Authentication routes
-app.post('/api/auth/request-code', async (req, res) => {
-  try {
-    if (!models || !models.User || !models.SecureCode || !models.Cashier) {
-      return res.status(503).json({
-        success: false,
-        message: 'Server is initializing. Please try again in a moment.',
-        code: 'SERVER_INITIALIZING'
-      });
-    }
-
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email address is required',
-        code: 'EMAIL_REQUIRED'
-      });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide a valid email address',
-        code: 'INVALID_EMAIL'
-      });
-    }
-
-    let user = null;
-    try {
-      user = await models.User.findOne({ email: email.toLowerCase().trim() }) || 
-             await models.Cashier.findOne({ email: email.toLowerCase().trim() });
-    } catch (dbError) {
-      return res.status(500).json({
-        success: false,
-        message: 'Database error. Please try again.',
-        code: 'DATABASE_ERROR'
-      });
-    }
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'No account found with this email address',
-        code: 'USER_NOT_FOUND'
-      });
-    }
-
-    if (user.status && user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account is not active. Please contact administrator.',
-        code: 'ACCOUNT_INACTIVE'
-      });
-    }
-
-    const secureCode = generateSecureCode();
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
-
-    const hashedCode = await bcrypt.hash(secureCode, 10);
-    
-    try {
-      await models.SecureCode.findOneAndUpdate(
-        { email: email.toLowerCase().trim() },
-        {
-          code: hashedCode,
-          expiresAt,
-          attempts: 0,
-          used: false
-        },
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: true 
-        }
-      );
-    } catch (dbError) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to generate secure code. Please try again.',
-        code: 'CODE_SAVE_ERROR'
-      });
-    }
-
-    if (!emailTransporter) {
-      return res.json({
-        success: true,
-        message: 'Secure code generated (email service disabled)',
-        developmentMode: true,
-        secureCode: secureCode,
-        expiresIn: 15,
-        code: 'DEVELOPMENT_MODE'
-      });
-    }
-
-    try {
-      await sendSecureCodeEmail(email, secureCode);
-      
-      res.json({
-        success: true,
-        message: 'Secure code sent to your email',
-        expiresIn: 15,
-        code: 'CODE_SENT'
-      });
-    } catch (emailError) {
-      await models.SecureCode.deleteOne({ email: email.toLowerCase().trim() });
-
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send secure code. Please try again later.',
-        code: 'EMAIL_SEND_FAILED'
-      });
-    }
-
-  } catch (error) {
-    console.error('❌ Unexpected error in request-code endpoint:', error);
-    
-    let errorMessage = 'Failed to process request. Please try again later.';
-    let errorCode = 'UNKNOWN_ERROR';
-    
-    if (error.name === 'MongoNetworkError') {
-      errorMessage = 'Database connection error. Please try again.';
-      errorCode = 'DATABASE_CONNECTION_ERROR';
-    } else if (error.name === 'ValidationError') {
-      errorMessage = 'Data validation error. Please check your input.';
-      errorCode = 'VALIDATION_ERROR';
-    }
-
-    res.status(500).json({
-      success: false,
-      message: errorMessage,
-      code: errorCode
-    });
-  }
-});
-
-app.post('/api/auth/verify-code',
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('code').isLength({ min: 6, max: 6 }).isNumeric()
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid input data',
-          details: errors.array()
-        });
-      }
-
-      const { email, code } = req.body;
-
-      const secureCode = await models.SecureCode.findOne({ email });
-      if (!secureCode) {
-        return res.status(404).json({
-          success: false,
-          message: 'No secure code found for this email. Please request a new code.'
-        });
-      }
-
-      if (new Date() > secureCode.expiresAt) {
-        await models.SecureCode.deleteOne({ email });
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has expired. Please request a new code.'
-        });
-      }
-
-      if (secureCode.used) {
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has already been used. Please request a new code.'
-        });
-      }
-
-      if (secureCode.attempts >= 5) {
-        await models.SecureCode.deleteOne({ email });
-        return res.status(400).json({
-          success: false,
-          message: 'Too many failed attempts. Please request a new code.'
-        });
-      }
-
-      const isValidCode = await bcrypt.compare(code, secureCode.code);
-      if (!isValidCode) {
-        secureCode.attempts += 1;
-        await secureCode.save();
-        
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid secure code',
-          attemptsRemaining: 5 - secureCode.attempts
-        });
-      }
-
-      secureCode.used = true;
-      await secureCode.save();
-
-      const user = await models.User.findOne({ email }) || 
-                   await models.Cashier.findOne({ email });
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User account not found'
-        });
-      }
-
-      user.lastLogin = new Date();
-      await user.save();
-
-      const token = generateAuthToken(user._id, user.email, user.role);
-
-      const userData = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        lastLogin: user.lastLogin
-      };
-
-      if (user.role === 'cashier' && user.shopId) {
-        userData.shopId = user.shopId;
-        userData.shopName = user.shopName;
-      }
-
-      req.session.user = userData;
-      req.session.token = token;
-
-      res.json({
-        success: true,
-        user: userData,
-        token: token,
-        message: 'Login successful'
-      });
-
-    } catch (error) {
-      console.error('❌ Error verifying secure code:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to verify code. Please try again.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
-  }
-);
-
-// Transaction routes
+// ENHANCED TRANSACTION CREATION WITH COMPLETE UPFRONT CREDIT SUPPORT
 app.post('/api/transactions', async (req, res) => {
   try {
     const transactionData = req.body;
+    
+    console.log('💳 Creating transaction with complete upfront credit support:', {
+      paymentMethod: transactionData.paymentMethod,
+      totalAmount: transactionData.totalAmount,
+      amountPaidNow: transactionData.amountPaidNow,
+      isCreditPayment: transactionData.isCreditPayment,
+      originalCreditId: transactionData.originalCreditId,
+      upfrontPaymentMethod: transactionData.upfrontPaymentMethod
+    });
 
+    // Check for duplicate transaction
     if (transactionData.transactionNumber) {
       const existingTransaction = await models.Transaction.findOne({ 
         transactionNumber: transactionData.transactionNumber 
       });
       
       if (existingTransaction) {
+        console.log('⚠️ Duplicate transaction detected:', transactionData.transactionNumber);
         return res.status(409).json({
           success: false,
           message: 'Transaction with this number already exists'
@@ -1209,10 +1147,12 @@ app.post('/api/transactions', async (req, res) => {
       }
     }
 
+    // Handle credit payment (part payment of existing credit)
     if (transactionData.isCreditPayment && transactionData.originalCreditId) {
       return await handleCreditPayment(transactionData, res);
     }
 
+    // Auto-populate shop and cashier information
     if (transactionData.shop) {
       const shop = await models.Shop.findById(transactionData.shop);
       if (shop) {
@@ -1228,6 +1168,7 @@ app.post('/api/transactions', async (req, res) => {
       }
     }
 
+    // Calculate detailed metrics for each item and reduce stock
     const items = transactionData.items || [];
     let totalAmount = 0;
     let totalCost = 0;
@@ -1244,6 +1185,7 @@ app.post('/api/transactions', async (req, res) => {
       totalAmount += itemTotalPrice;
       totalCost += itemCost;
 
+      // REDUCE STOCK FOR THE PRODUCT (only for new sales, not credit payments)
       if (item.productId && !transactionData.isCreditPayment) {
         try {
           const product = await models.Product.findById(item.productId);
@@ -1255,6 +1197,8 @@ app.post('/api/transactions', async (req, res) => {
               currentStock: newStock,
               updatedAt: new Date()
             });
+            
+            console.log(`📦 Stock reduced for ${product.name}: ${currentStock} -> ${newStock} (sold: ${quantity})`);
           }
         } catch (stockError) {
           console.error('❌ Error reducing stock for product:', item.productId, stockError);
@@ -1273,6 +1217,7 @@ app.post('/api/transactions', async (req, res) => {
       };
     }));
 
+    // ENHANCED: Handle partial payment for credit sales with upfront payment support
     const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
     const isCreditTransaction = transactionData.paymentMethod === 'credit';
     
@@ -1282,10 +1227,12 @@ app.post('/api/transactions', async (req, res) => {
     let creditStatus = 'completed';
 
     if (isCreditTransaction) {
+      // For credit sales with partial payment
       amountPaid = amountPaidNow;
       recognizedRevenue = amountPaidNow;
       outstandingRevenue = Math.max(0, totalAmount - amountPaidNow);
       
+      // Determine credit status based on payment
       if (outstandingRevenue <= 0) {
         creditStatus = 'paid';
       } else if (amountPaidNow > 0) {
@@ -1305,6 +1252,7 @@ app.post('/api/transactions', async (req, res) => {
     transactionData.itemsCount = items.reduce((sum, item) => sum + CalculationUtils.safeNumber(item.quantity, 1), 0);
     transactionData.items = enhancedItems;
 
+    // ENHANCED: Initialize payment split with upfront credit support
     transactionData.paymentSplit = {
       cash: 0,
       bank_mpesa: 0,
@@ -1313,6 +1261,7 @@ app.post('/api/transactions', async (req, res) => {
       upfront_bank_mpesa: 0
     };
 
+    // Handle credit transactions with upfront payment support
     if (isCreditTransaction) {
       transactionData.isCreditTransaction = true;
       transactionData.creditStatus = creditStatus;
@@ -1320,12 +1269,16 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.outstandingRevenue = outstandingRevenue;
       transactionData.amountPaid = amountPaid;
       transactionData.status = 'credit';
+      
+      // Track immediate revenue for cashier dashboard
       transactionData.immediateRevenue = amountPaidNow;
       
+      // Store credit shop classification
       transactionData.creditShopName = transactionData.creditShopName || transactionData.shopName;
       transactionData.creditShopId = transactionData.creditShopId || transactionData.shopId;
       transactionData.shopClassification = transactionData.shopClassification || transactionData.shopName;
       
+      // ENHANCED: Track upfront payment details
       transactionData.upfrontPaymentDetails = {
         amount: amountPaidNow,
         method: transactionData.upfrontPaymentMethod || 'cash',
@@ -1335,7 +1288,9 @@ app.post('/api/transactions', async (req, res) => {
         }
       };
 
+      // ENHANCED: Update payment split for credit transactions with upfront payment support
       if (amountPaidNow > 0) {
+        // For credit sales with upfront payment, track the payment method
         if (transactionData.upfrontPaymentMethod === 'cash') {
           transactionData.paymentSplit.upfront_cash = amountPaidNow;
           transactionData.upfrontPaymentDetails.split.cash = amountPaidNow;
@@ -1350,8 +1305,10 @@ app.post('/api/transactions', async (req, res) => {
         }
       }
       
+      // CREDIT UPDATE: Only show the remaining balance (outstandingRevenue) on credit side
       transactionData.paymentSplit.credit = outstandingRevenue;
       
+      // Set due date if not provided (default 30 days)
       if (!transactionData.dueDate) {
         transactionData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
@@ -1363,16 +1320,19 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.status = 'completed';
       transactionData.immediateRevenue = totalAmount;
       
+      // ENHANCED: Update payment split for non-credit transactions
       if (transactionData.paymentMethod === 'cash') {
         transactionData.paymentSplit.cash = totalAmount;
       } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transactionData.paymentMethod)) {
         transactionData.paymentSplit.bank_mpesa = totalAmount;
       } else if (transactionData.paymentMethod === 'cash_bank_mpesa' && transactionData.paymentSplit) {
+        // Use provided split
         transactionData.paymentSplit.cash = CalculationUtils.safeNumber(transactionData.paymentSplit.cash);
         transactionData.paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
       }
     }
 
+    // Generate transaction number if not provided
     if (!transactionData.transactionNumber) {
       transactionData.transactionNumber = `TXN-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`;
     }
@@ -1384,7 +1344,9 @@ app.post('/api/transactions', async (req, res) => {
     await transaction.populate('cashierId', 'name email');
     await transaction.populate('items.productId', 'name buyingPrice');
 
+    // Create credit record ONLY if this is a credit transaction AND doesn't already exist
     if (isCreditTransaction && !transactionData.isCreditPayment) {
+      // Check if credit record already exists to prevent duplication
       const existingCredit = await models.Credit.findOne({ 
         transactionId: transaction._id 
       });
@@ -1397,7 +1359,7 @@ app.post('/api/transactions', async (req, res) => {
           customerEmail: transactionData.customerEmail,
           totalAmount: totalAmount,
           amountPaid: amountPaidNow,
-          balanceDue: outstandingRevenue,
+          balanceDue: outstandingRevenue, // This now shows only the remaining balance
           dueDate: transactionData.dueDate,
           status: creditStatus,
           shop: transactionData.shop,
@@ -1410,6 +1372,7 @@ app.post('/api/transactions', async (req, res) => {
           cashierName: transactionData.cashierName,
           recordedBy: transactionData.recordedBy || 'System',
           notes: `Credit transaction created for ${transactionData.customerName}`,
+          // NEW: Store upfront payment details in credit record
           upfrontPayment: {
             amount: amountPaidNow,
             method: transactionData.upfrontPaymentMethod || 'cash',
@@ -1420,6 +1383,7 @@ app.post('/api/transactions', async (req, res) => {
           }
         };
 
+        // Add initial payment to history if partial payment was made
         if (amountPaidNow > 0) {
           creditData.paymentHistory = [{
             amount: amountPaidNow,
@@ -1428,18 +1392,51 @@ app.post('/api/transactions', async (req, res) => {
             recordedBy: transactionData.recordedBy || 'System',
             cashierName: transactionData.cashierName,
             notes: `Initial upfront payment for credit sale`,
-            isUpfrontPayment: true
+            isUpfrontPayment: true // NEW: Mark as upfront payment
           }];
         }
 
-        await models.Credit.create(creditData);
+        const credit = await models.Credit.create(creditData);
+        console.log('✅ Credit record created with upfront payment support:', {
+          creditId: credit._id,
+          totalAmount: credit.totalAmount,
+          amountPaid: credit.amountPaid,
+          balanceDue: credit.balanceDue, // This now shows only the remaining balance
+          status: credit.status,
+          upfrontPayment: credit.upfrontPayment
+        });
+      } else {
+        console.log('⚠️ Credit record already exists for transaction:', transaction._id);
       }
     }
+
+    console.log('✅ Transaction created successfully with upfront credit support:', {
+      transactionId: transaction._id,
+      totalAmount: totalAmount,
+      amountPaid: amountPaid,
+      recognizedRevenue: recognizedRevenue,
+      outstandingRevenue: outstandingRevenue, // This is what will be displayed on credit side
+      immediateRevenue: transactionData.immediateRevenue,
+      cost: totalCost,
+      profit: profit,
+      paymentMethod: transactionData.paymentMethod,
+      isCredit: isCreditTransaction,
+      paymentSplit: transactionData.paymentSplit, // ENHANCED: Includes upfront payment tracking
+      upfrontPaymentDetails: transactionData.upfrontPaymentDetails,
+      itemsSold: transactionData.itemsCount
+    });
 
     res.status(201).json({
       success: true,
       data: transaction,
-      message: `Transaction created successfully${isCreditTransaction ? ' with credit record' : ''}`
+      message: `Transaction created successfully${isCreditTransaction ? ' with credit record' : ''}`,
+      creditDetails: isCreditTransaction ? {
+        totalAmount,
+        amountPaid: amountPaidNow,
+        balanceDue: outstandingRevenue, // Show only balance due
+        status: creditStatus,
+        upfrontPayment: transactionData.upfrontPaymentDetails
+      } : null
     });
   } catch (error) {
     console.error('Error creating transaction:', error);
@@ -1451,8 +1448,16 @@ app.post('/api/transactions', async (req, res) => {
   }
 });
 
+// Handle credit payment (part payment of existing credit)
 async function handleCreditPayment(transactionData, res) {
   try {
+    console.log('💰 Processing credit payment:', {
+      originalCreditId: transactionData.originalCreditId,
+      paymentAmount: transactionData.totalAmount,
+      paymentMethod: transactionData.paymentMethod
+    });
+
+    // Find the original credit record
     const originalCredit = await models.Credit.findById(transactionData.originalCreditId)
       .populate('transactionId')
       .populate('shop', 'name location type');
@@ -1470,9 +1475,11 @@ async function handleCreditPayment(transactionData, res) {
     const totalAmount = CalculationUtils.safeNumber(originalCredit.totalAmount);
     const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
 
+    // Update the credit record
     originalCredit.amountPaid = newAmountPaid;
-    originalCredit.balanceDue = newBalanceDue;
+    originalCredit.balanceDue = newBalanceDue; // This now shows only the remaining balance
     
+    // Update status
     let newStatus = originalCredit.status;
     if (newBalanceDue <= 0) {
       newStatus = 'paid';
@@ -1481,6 +1488,7 @@ async function handleCreditPayment(transactionData, res) {
     }
     originalCredit.status = newStatus;
 
+    // Add payment to history
     originalCredit.paymentHistory.push({
       amount: paymentAmount,
       paymentMethod: transactionData.paymentMethod,
@@ -1493,16 +1501,18 @@ async function handleCreditPayment(transactionData, res) {
     originalCredit.updatedAt = new Date();
     await originalCredit.save();
 
+    // Update the original transaction
     if (originalCredit.transactionId) {
       await models.Transaction.findByIdAndUpdate(originalCredit.transactionId, {
         amountPaid: newAmountPaid,
         recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue,
+        outstandingRevenue: newBalanceDue, // This now shows only the remaining balance
         creditStatus: newStatus,
         updatedAt: new Date()
       });
     }
 
+    // ENHANCED: Payment split for credit payments
     const paymentSplit = {
       cash: 0,
       bank_mpesa: 0,
@@ -1520,23 +1530,35 @@ async function handleCreditPayment(transactionData, res) {
       paymentSplit.bank_mpesa = CalculationUtils.safeNumber(transactionData.paymentSplit.bank_mpesa);
     }
 
+    // Create a new transaction record for the payment
     const paymentTransactionData = {
       ...transactionData,
       isCreditPayment: true,
       originalCreditId: originalCredit._id,
       transactionNumber: `PAY-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substr(2, 5)}`,
+      // For credit payments, the revenue should be recognized immediately
       recognizedRevenue: paymentAmount,
       outstandingRevenue: 0,
       amountPaid: paymentAmount,
-      immediateRevenue: paymentAmount,
-      isCreditTransaction: false,
+      immediateRevenue: paymentAmount, // Track immediate revenue
+      isCreditTransaction: false, // This is a payment, not a new credit
       creditStatus: null,
       status: 'completed',
-      paymentSplit: paymentSplit
+      paymentSplit: paymentSplit // Include payment split
     };
 
     const paymentTransaction = new models.Transaction(paymentTransactionData);
     await paymentTransaction.save();
+
+    console.log('✅ Credit payment processed successfully:', {
+      creditId: originalCredit._id,
+      paymentAmount,
+      newAmountPaid,
+      newBalanceDue, // This now shows only the remaining balance
+      status: newStatus,
+      paymentTransactionId: paymentTransaction._id,
+      paymentSplit: paymentSplit
+    });
 
     res.status(201).json({
       success: true,
@@ -1557,7 +1579,458 @@ async function handleCreditPayment(transactionData, res) {
   }
 }
 
-// Combined transaction endpoint
+// ==================== COMPLETE API ENDPOINTS ====================
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    app: process.env.APP_NAME || 'Seridah Chemist Management',
+    version: process.env.APP_VERSION || '1.0.0',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    email: emailTransporter ? 'configured' : 'disabled',
+    authentication: 'email-based-secure-code',
+    cogsCalculation: 'complete_sales_plus_credit_sales_made',
+    creditPartialPayment: 'supported',
+    immediateRevenueTracking: 'enabled',
+    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+    creditDisplayLogic: 'balance_due_only'
+  });
+});
+
+// ==================== AUTHENTICATION ROUTES ====================
+app.post('/api/auth/request-code', async (req, res) => {
+  try {
+    // Enhanced server initialization check
+    if (!models || !models.User || !models.SecureCode || !models.Cashier) {
+      console.error('❌ Server models not initialized');
+      return res.status(503).json({
+        success: false,
+        message: 'Server is initializing. Please try again in a moment.',
+        code: 'SERVER_INITIALIZING'
+      });
+    }
+
+    const { email } = req.body;
+
+    // Validate email presence
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is required',
+        code: 'EMAIL_REQUIRED'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address',
+        code: 'INVALID_EMAIL'
+      });
+    }
+
+    console.log('📧 Secure code request for:', email);
+
+    // Enhanced user lookup with better error handling
+    let user = null;
+    try {
+      user = await models.User.findOne({ email: email.toLowerCase().trim() }) || 
+             await models.Cashier.findOne({ email: email.toLowerCase().trim() });
+    } catch (dbError) {
+      console.error('❌ Database error during user lookup:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error. Please try again.',
+        code: 'DATABASE_ERROR'
+      });
+    }
+
+    if (!user) {
+      console.log('❌ No user found for email:', email);
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if user is active
+    if (user.status && user.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active. Please contact administrator.',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Generate secure code
+    const secureCode = generateSecureCode();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    const hashedCode = await bcrypt.hash(secureCode, 10);
+    
+    // Save secure code with enhanced error handling
+    try {
+      await models.SecureCode.findOneAndUpdate(
+        { email: email.toLowerCase().trim() },
+        {
+          code: hashedCode,
+          expiresAt,
+          attempts: 0,
+          used: false
+        },
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: true 
+        }
+      );
+    } catch (dbError) {
+      console.error('❌ Database error saving secure code:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate secure code. Please try again.',
+        code: 'CODE_SAVE_ERROR'
+      });
+    }
+
+    // Handle email service availability
+    if (!emailTransporter) {
+      console.log('📧 Email service disabled - returning code in development mode');
+      return res.json({
+        success: true,
+        message: 'Secure code generated (email service disabled)',
+        developmentMode: true,
+        secureCode: secureCode,
+        expiresIn: 15,
+        code: 'DEVELOPMENT_MODE'
+      });
+    }
+
+    // Send email with enhanced error handling
+    try {
+      await sendSecureCodeEmail(email, secureCode);
+      console.log('✅ Secure code sent successfully to:', email);
+      
+      res.json({
+        success: true,
+        message: 'Secure code sent to your email',
+        expiresIn: 15,
+        code: 'CODE_SENT'
+      });
+    } catch (emailError) {
+      console.error('❌ Failed to send email:', emailError);
+      
+      // Clean up the secure code since email failed
+      try {
+        await models.SecureCode.deleteOne({ email: email.toLowerCase().trim() });
+      } catch (cleanupError) {
+        console.error('❌ Failed to cleanup secure code after email failure:', cleanupError);
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send secure code. Please try again later.',
+        code: 'EMAIL_SEND_FAILED'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Unexpected error in request-code endpoint:', error);
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = 'Failed to process request. Please try again later.';
+    let errorCode = 'UNKNOWN_ERROR';
+    
+    if (error.name === 'MongoNetworkError') {
+      errorMessage = 'Database connection error. Please try again.';
+      errorCode = 'DATABASE_CONNECTION_ERROR';
+    } else if (error.name === 'ValidationError') {
+      errorMessage = 'Data validation error. Please check your input.';
+      errorCode = 'VALIDATION_ERROR';
+    }
+
+    res.status(500).json({
+      success: false,
+      message: errorMessage,
+      code: errorCode,
+      // Only include error details in development
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error.message,
+        stack: error.stack
+      })
+    });
+  }
+});
+
+// Verify secure login code
+app.post('/api/auth/verify-code',
+  [
+    body('email').isEmail().normalizeEmail(),
+    body('code').isLength({ min: 6, max: 6 }).isNumeric()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid input data',
+          details: errors.array()
+        });
+      }
+
+      const { email, code } = req.body;
+      console.log('🔐 Secure code verification for:', email);
+
+      // Find the secure code
+      const secureCode = await models.SecureCode.findOne({ email });
+      if (!secureCode) {
+        return res.status(404).json({
+          success: false,
+          message: 'No secure code found for this email. Please request a new code.'
+        });
+      }
+
+      // Check if code is expired
+      if (new Date() > secureCode.expiresAt) {
+        await models.SecureCode.deleteOne({ email });
+        return res.status(400).json({
+          success: false,
+          message: 'Secure code has expired. Please request a new code.'
+        });
+      }
+
+      // Check if code is already used
+      if (secureCode.used) {
+        return res.status(400).json({
+          success: false,
+          message: 'Secure code has already been used. Please request a new code.'
+        });
+      }
+
+      // Check attempts
+      if (secureCode.attempts >= 5) {
+        await models.SecureCode.deleteOne({ email });
+        return res.status(400).json({
+          success: false,
+          message: 'Too many failed attempts. Please request a new code.'
+        });
+      }
+
+      // Verify code
+      const isValidCode = await bcrypt.compare(code, secureCode.code);
+      if (!isValidCode) {
+        secureCode.attempts += 1;
+        await secureCode.save();
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid secure code',
+          attemptsRemaining: 5 - secureCode.attempts
+        });
+      }
+
+      // Code is valid - mark as used
+      secureCode.used = true;
+      await secureCode.save();
+
+      // Find user
+      const user = await models.User.findOne({ email }) || 
+                   await models.Cashier.findOne({ email });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User account not found'
+        });
+      }
+
+      // Update last login
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Generate token
+      const token = generateAuthToken(user._id, user.email, user.role);
+
+      const userData = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        lastLogin: user.lastLogin
+      };
+
+      // Add shop info for cashiers
+      if (user.role === 'cashier' && user.shopId) {
+        userData.shopId = user.shopId;
+        userData.shopName = user.shopName;
+      }
+
+      req.session.user = userData;
+      req.session.token = token;
+
+      console.log('✅ Secure code verification successful for:', email);
+
+      res.json({
+        success: true,
+        user: userData,
+        token: token,
+        message: 'Login successful'
+      });
+
+    } catch (error) {
+      console.error('❌ Error verifying secure code:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to verify code. Please try again.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// Cashier login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide email and password'
+      });
+    }
+
+    const cashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() })
+      .populate('shopId', 'name location');
+    
+    if (!cashier || cashier.status !== 'active') {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier account not found or inactive'
+      });
+    }
+
+    let isPasswordValid = false;
+    if (cashier.password) {
+      if (cashier.password.startsWith('$2b$')) {
+        isPasswordValid = await bcrypt.compare(password, cashier.password);
+      } else {
+        isPasswordValid = cashier.password === password;
+      }
+    }
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid password'
+      });
+    }
+
+    cashier.lastLogin = new Date();
+    await cashier.save();
+
+    const token = generateAuthToken(cashier._id, cashier.email, cashier.role);
+
+    const userData = {
+      _id: cashier._id,
+      name: cashier.name,
+      email: cashier.email,
+      phone: cashier.phone,
+      role: cashier.role,
+      status: cashier.status,
+      lastLogin: cashier.lastLogin,
+      shopId: cashier.shopId?._id || null,
+      shopName: cashier.shopId?.name || cashier.shopName || null
+    };
+
+    req.session.user = userData;
+    req.session.token = token;
+
+    res.json({
+      success: true,
+      user: userData,
+      token: token,
+      message: 'Cashier login successful'
+    });
+
+  } catch (error) {
+    console.error('❌ Cashier login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during login. Please try again.'
+    });
+  }
+});
+// Add this to your server code for debugging
+app.post('/api/debug/credit-transaction', async (req, res) => {
+  try {
+    const transactionData = req.body;
+    
+    console.log('🔍 DEBUG - Transaction data received:', {
+      paymentMethod: transactionData.paymentMethod,
+      totalAmount: transactionData.totalAmount,
+      amountPaidNow: transactionData.amountPaidNow,
+      upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
+      upfrontPaymentSplit: transactionData.upfrontPaymentSplit,
+      isCreditTransaction: transactionData.paymentMethod === 'credit'
+    });
+
+    // Simulate what should happen
+    const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
+    const totalAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
+    const balanceDue = Math.max(0, totalAmount - amountPaidNow);
+
+    console.log('🔍 DEBUG - Expected credit record:', {
+      totalAmount,
+      amountPaid: amountPaidNow,
+      balanceDue, // This should be the remaining balance only
+      upfrontPayment: {
+        amount: amountPaidNow,
+        method: transactionData.upfrontPaymentMethod,
+        split: transactionData.upfrontPaymentSplit
+      }
+    });
+
+    res.json({
+      success: true,
+      debug: {
+        received: {
+          amountPaidNow: transactionData.amountPaidNow,
+          upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
+          upfrontPaymentSplit: transactionData.upfrontPaymentSplit
+        },
+        expected: {
+          totalAmount,
+          amountPaid: amountPaidNow,
+          balanceDue,
+          upfrontPayment: {
+            amount: amountPaidNow,
+            method: transactionData.upfrontPaymentMethod,
+            split: transactionData.upfrontPaymentSplit
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Debug failed',
+      error: error.message
+    });
+  }
+});
+// ==================== COMBINED TRANSACTION ENDPOINTS ====================
+
 app.get('/api/transactions/combined', async (req, res) => {
   try {
     const {
@@ -1565,9 +2038,14 @@ app.get('/api/transactions/combined', async (req, res) => {
       endDate,
       shopId,
       cashierId,
-      paymentMethod
+      paymentMethod,
+      dataType = 'all'
     } = req.query;
 
+    console.log('🚀 Processing enhanced combined transaction endpoint...', req.query);
+
+    const startTime = Date.now();
+    
     const filters = {
       startDate,
       endDate,
@@ -1577,24 +2055,391 @@ app.get('/api/transactions/combined', async (req, res) => {
     };
 
     const transactionData = await getAllTransactionData(filters);
+    const processingTime = Date.now() - startTime;
 
-    res.json({
+    console.log(`✅ Enhanced combined transaction data generated in ${processingTime}ms`);
+
+    let responseData = {
       success: true,
       data: transactionData,
-      message: 'Combined transaction data fetched successfully'
-    });
+      processingTime,
+      message: 'Combined transaction data fetched successfully',
+      cogsMethodology: 'complete_sales_plus_credit_sales_made',
+      creditPartialPayment: 'supported',
+      immediateRevenueTracking: 'enabled',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    };
+
+    if (dataType !== 'all') {
+      switch (dataType) {
+        case 'basic':
+          responseData.data = {
+            transactions: transactionData.salesWithProfit,
+            summary: transactionData.summary
+          };
+          break;
+        case 'enhanced':
+          responseData.data = {
+            transactions: transactionData.salesWithProfit,
+            summary: transactionData.financialStats,
+            credits: transactionData.credits
+          };
+          break;
+        case 'sales':
+          responseData.data = {
+            transactions: transactionData.salesWithProfit,
+            summary: transactionData.summary,
+            performance: transactionData.performance
+          };
+          break;
+        case 'withCredits':
+          responseData.data = {
+            transactions: transactionData.salesWithProfit,
+            credits: transactionData.credits,
+            summary: {
+              ...transactionData.summary,
+              creditSummary: {
+                totalCredits: transactionData.credits.length,
+                totalCreditAmount: transactionData.summary.totalCreditGiven,
+                outstandingCredit: transactionData.summary.outstandingCredit,
+                recognizedCreditRevenue: transactionData.summary.recognizedCreditRevenue,
+                totalUpfrontPayments: transactionData.summary.totalUpfrontPayments // NEW: Include upfront payments
+              }
+            }
+          };
+          break;
+        case 'optimized':
+          responseData.data = {
+            comprehensiveReport: transactionData.comprehensiveReport,
+            salesSummary: {
+              financialStats: transactionData.financialStats,
+              topProducts: transactionData.performance.topProducts,
+              topCashiers: transactionData.performance.topCashiers
+            },
+            enhancedStats: transactionData.enhancedStats,
+            filteredTransactions: transactionData.salesWithProfit
+          };
+          break;
+        case 'metrics-only':
+          responseData.data = {
+            metrics: transactionData.financialStats,
+            period: {
+              startDate: startDate || 'All time',
+              endDate: endDate || 'All time'
+            }
+          };
+          break;
+      }
+    }
+
+    res.json(responseData);
 
   } catch (error) {
     console.error('❌ Error in enhanced combined transaction endpoint:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch combined transaction data',
+      error: error.message,
+      processingTime: 0
+    });
+  }
+});
+
+// SPECIFIC METRICS ENDPOINT - Returns exactly the 12 metrics shown in the image with upfront credit support
+app.get('/api/transactions/metrics', async (req, res) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      shopId,
+      cashierId
+    } = req.query;
+
+    console.log('📈 Fetching specific transaction metrics with upfront credit support...', req.query);
+
+    const filters = {
+      startDate,
+      endDate,
+      shopId,
+      cashierId
+    };
+
+    const transactionData = await getAllTransactionData(filters);
+
+    // Extract exactly the 12 metrics shown in the image with upfront credit support
+    const metrics = {
+      // 1. Total Sales
+      totalSales: {
+        amount: transactionData.financialStats.totalRevenue,
+        count: transactionData.financialStats.totalSales,
+        description: `${transactionData.financialStats.totalSales} transactions`
+      },
+      
+      // 2. Credit Sales
+      creditSales: {
+        amount: transactionData.financialStats.creditSales,
+        count: transactionData.financialStats.creditSalesCount,
+        description: `${transactionData.financialStats.creditSalesCount} credit transactions`
+      },
+      
+      // 3. Non-Credit Sales
+      nonCreditSales: {
+        amount: transactionData.financialStats.nonCreditSales,
+        count: transactionData.financialStats.nonCreditSalesCount,
+        description: `${transactionData.financialStats.nonCreditSalesCount} complete transaction/skell immediately`
+      },
+      
+      // 4. Total Revenue
+      totalRevenue: {
+        amount: transactionData.financialStats.totalRevenue,
+        description: 'From credit & non-credit sales (includes upfront payments)'
+      },
+      
+      // 5. Expenses
+      expenses: {
+        amount: transactionData.financialStats.totalExpenses,
+        description: 'Total operational costs'
+      },
+      
+      // 6. Gross Profit
+      grossProfit: {
+        amount: transactionData.financialStats.grossProfit,
+        description: 'Revenue - Cost of Goods'
+      },
+      
+      // 7. Net Profit
+      netProfit: {
+        amount: transactionData.financialStats.netProfit,
+        description: 'After all expenses'
+      },
+      
+      // 8. Cost of Goods Sold
+      costOfGoodsSold: {
+        amount: transactionData.financialStats.costOfGoodsSold,
+        description: 'For credit & non-credit sales'
+      },
+      
+      // 9. Total Mpesa/Bank
+      totalMpesaBank: {
+        amount: transactionData.financialStats.totalMpesaBank,
+        description: 'Digital payments (includes upfront credit payments)'
+      },
+      
+      // 10. Total Cash
+      totalCash: {
+        amount: transactionData.financialStats.totalCash,
+        description: 'Cash payments (includes upfront credit payments)'
+      },
+      
+      // 11. Outstanding Credit
+      outstandingCredit: {
+        amount: transactionData.financialStats.outstandingCredit,
+        description: 'Unpaid credit balance only'
+      },
+      
+      // 12. Total Credit Given
+      totalCreditGiven: {
+        amount: transactionData.financialStats.totalCreditGiven,
+        description: 'Total credit extended'
+      },
+
+      // NEW: Upfront Payment Metrics
+      upfrontPayments: {
+        amount: transactionData.financialStats.totalUpfrontPayments,
+        description: 'Upfront payments on credit sales'
+      }
+    };
+
+    res.json({
+      success: true,
+      data: metrics,
+      period: {
+        startDate: startDate || 'All time',
+        endDate: endDate || 'All time'
+      },
+      message: 'Transaction metrics fetched successfully',
+      cogsCalculation: 'complete_sales_plus_credit_sales_made',
+      creditPartialPayment: 'supported',
+      immediateRevenueTracking: 'enabled',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching transaction metrics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch transaction metrics',
       error: error.message
     });
   }
 });
 
-// Basic CRUD routes (simplified for brevity)
+// ENHANCED TRANSACTIONS WITH CREDIT DETAILS
+app.get('/api/transactions/with-credits', async (req, res) => {
+  try {
+    const {
+      startDate,
+      endDate,
+      shopId,
+      cashierId,
+      includeCreditDetails = 'true'
+    } = req.query;
+
+    const filters = {
+      startDate,
+      endDate,
+      shopId,
+      cashierId
+    };
+
+    const transactionData = await getAllTransactionData(filters);
+
+    // Enhance transactions with credit information
+    const transactionsWithCredits = transactionData.salesWithProfit.map(transaction => {
+      const creditInfo = transactionData.credits.find(credit => 
+        credit.transactionId && credit.transactionId._id && 
+        credit.transactionId._id.toString() === transaction._id.toString()
+      );
+
+      return {
+        ...transaction,
+        creditDetails: creditInfo ? {
+          creditId: creditInfo._id,
+          customerName: creditInfo.customerName,
+          customerPhone: creditInfo.customerPhone,
+          totalAmount: creditInfo.totalAmount,
+          amountPaid: creditInfo.amountPaid,
+          balanceDue: creditInfo.balanceDue, // This now shows only the remaining balance
+          dueDate: creditInfo.dueDate,
+          status: creditInfo.status,
+          paymentHistory: creditInfo.paymentHistory,
+          shopClassification: creditInfo.shopClassification,
+          upfrontPayment: creditInfo.upfrontPayment // NEW: Include upfront payment details
+        } : null
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        transactions: transactionsWithCredits,
+        summary: transactionData.financialStats,
+        credits: includeCreditDetails === 'true' ? transactionData.credits : [],
+        metrics: transactionData.financialStats
+      },
+      message: 'Transactions with credit details fetched successfully',
+      cogsMethodology: 'complete_sales_plus_credit_sales_made',
+      creditPartialPayment: 'supported',
+      immediateRevenueTracking: 'enabled',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching transactions with credits:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch transactions with credit details',
+      error: error.message
+    });
+  }
+});
+
+// ==================== CASHIER-SPECIFIC ENDPOINTS ====================
+
+// Enhanced cashier dashboard metrics endpoint with upfront credit support
+app.get('/api/cashier/dashboard-metrics', async (req, res) => {
+  try {
+    const { cashierId, shopId, startDate, endDate } = req.query;
+
+    if (!cashierId || !shopId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cashier ID and Shop ID are required'
+      });
+    }
+
+    console.log('📊 Fetching cashier-specific dashboard metrics with upfront credit support...', {
+      cashierId,
+      shopId,
+      startDate,
+      endDate
+    });
+
+    const filters = {
+      cashierId,
+      shopId,
+      startDate: startDate || new Date().toISOString().split('T')[0],
+      endDate: endDate || new Date().toISOString()
+    };
+
+    const transactionData = await getAllTransactionData(filters);
+    const financialStats = transactionData.financialStats;
+
+    // Enhanced cashier-specific metrics with upfront credit support
+    const cashierMetrics = {
+      // Core metrics for cashier dashboard
+      totalSales: financialStats.totalRevenue,
+      totalTransactions: financialStats.totalSales,
+      creditSales: financialStats.creditSales,
+      nonCreditSales: financialStats.nonCreditSales,
+      totalCash: financialStats.totalCash,
+      totalMpesaBank: financialStats.totalMpesaBank,
+      totalCredit: financialStats.totalCredit,
+      outstandingCredit: financialStats.outstandingCredit,
+      
+      // NEW: Upfront payment metrics
+      totalUpfrontPayments: financialStats.totalUpfrontPayments,
+      totalUpfrontCash: financialStats.totalUpfrontCash,
+      totalUpfrontMpesaBank: financialStats.totalUpfrontMpesaBank,
+      
+      // Performance metrics
+      itemsSold: financialStats.totalItemsSold,
+      averageTransaction: financialStats.averageTransactionValue,
+      profitMargin: financialStats.profitMargin,
+      
+      // Credit performance
+      creditTransactions: financialStats.creditSalesCount,
+      creditCollectionRate: financialStats.creditCollectionRate,
+      recognizedCreditRevenue: financialStats.recognizedCreditRevenue,
+      
+      // Immediate revenue tracking
+      immediateRevenue: financialStats.totalRevenue, // This includes all recognized revenue
+      creditImmediateRevenue: financialStats.recognizedCreditRevenue, // Credit portion of immediate revenue
+      
+      // Metadata
+      period: {
+        startDate: filters.startDate,
+        endDate: filters.endDate
+      },
+      cashierId,
+      shopId,
+      upfrontCreditSupport: true // NEW: Indicate support
+    };
+
+    res.json({
+      success: true,
+      data: cashierMetrics,
+      message: 'Cashier dashboard metrics fetched successfully',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching cashier dashboard metrics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch cashier dashboard metrics',
+      error: error.message
+    });
+  }
+});
+
+// ==================== BASIC CRUD ENDPOINTS ====================
+
+// Products API
 app.get('/api/products', async (req, res) => {
   try {
     const products = await models.Product.find()
@@ -1607,6 +2452,7 @@ app.get('/api/products', async (req, res) => {
       count: products.length
     });
   } catch (error) {
+    console.error('Error fetching products:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch products',
@@ -1615,6 +2461,100 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+app.post('/api/products', async (req, res) => {
+  try {
+    const productData = req.body;
+    
+    // Auto-populate shop information if shop ID is provided
+    if (productData.shop) {
+      const shop = await models.Shop.findById(productData.shop);
+      if (shop) {
+        productData.shopName = shop.name;
+        productData.shopId = shop._id;
+      }
+    }
+
+    const product = new models.Product(productData);
+    await product.save();
+    
+    await product.populate('shop', 'name location type');
+    
+    res.status(201).json({
+      success: true,
+      data: product,
+      message: 'Product created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create product',
+      error: error.message
+    });
+  }
+});
+
+app.put('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const product = await models.Product.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('shop', 'name location type');
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: product,
+      message: 'Product updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update product',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const product = await models.Product.findByIdAndDelete(id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete product',
+      error: error.message
+    });
+  }
+});
+
+// Shops API
 app.get('/api/shops', async (req, res) => {
   try {
     const shops = await models.Shop.find().sort({ createdAt: -1 });
@@ -1624,6 +2564,7 @@ app.get('/api/shops', async (req, res) => {
       count: shops.length
     });
   } catch (error) {
+    console.error('Error fetching shops:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch shops',
@@ -1632,6 +2573,89 @@ app.get('/api/shops', async (req, res) => {
   }
 });
 
+app.post('/api/shops', async (req, res) => {
+  try {
+    const shopData = req.body;
+
+    const shop = new models.Shop(shopData);
+    await shop.save();
+    
+    res.status(201).json({
+      success: true,
+      data: shop,
+      message: 'Shop created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create shop',
+      error: error.message
+    });
+  }
+});
+
+app.put('/api/shops/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const shop = await models.Shop.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    );
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: shop,
+      message: 'Shop updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update shop',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/shops/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const shop = await models.Shop.findByIdAndDelete(id);
+
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Shop deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete shop',
+      error: error.message
+    });
+  }
+});
+
+// Cashiers API
 app.get('/api/cashiers', async (req, res) => {
   try {
     const cashiers = await models.Cashier.find()
@@ -1644,6 +2668,7 @@ app.get('/api/cashiers', async (req, res) => {
       count: cashiers.length
     });
   } catch (error) {
+    console.error('Error fetching cashiers:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch cashiers',
@@ -1652,6 +2677,101 @@ app.get('/api/cashiers', async (req, res) => {
   }
 });
 
+app.post('/api/cashiers', async (req, res) => {
+  try {
+    const cashierData = req.body;
+
+    // Hash password if provided
+    if (cashierData.password) {
+      cashierData.password = await bcrypt.hash(cashierData.password, 10);
+    }
+
+    const cashier = new models.Cashier(cashierData);
+    await cashier.save();
+    
+    await cashier.populate('shopId', 'name location');
+    
+    res.status(201).json({
+      success: true,
+      data: cashier,
+      message: 'Cashier created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating cashier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create cashier',
+      error: error.message
+    });
+  }
+});
+
+app.put('/api/cashiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    // Hash password if provided
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    const cashier = await models.Cashier.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('shopId', 'name location');
+
+    if (!cashier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: cashier,
+      message: 'Cashier updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating cashier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update cashier',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/cashiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const cashier = await models.Cashier.findByIdAndDelete(id);
+
+    if (!cashier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cashier deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting cashier:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete cashier',
+      error: error.message
+    });
+  }
+});
+
+// Expenses API
 app.get('/api/expenses', async (req, res) => {
   try {
     const expenses = await models.Expense.find()
@@ -1664,6 +2784,7 @@ app.get('/api/expenses', async (req, res) => {
       count: expenses.length
     });
   } catch (error) {
+    console.error('Error fetching expenses:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch expenses',
@@ -1672,9 +2793,232 @@ app.get('/api/expenses', async (req, res) => {
   }
 });
 
+app.post('/api/expenses', async (req, res) => {
+  try {
+    const expenseData = req.body;
+    
+    console.log('💰 Creating expense:', {
+      category: expenseData.category,
+      amount: expenseData.amount,
+      description: expenseData.description,
+      paymentMethod: expenseData.paymentMethod
+    });
+
+    // Auto-populate shop information if shop ID is provided
+    if (expenseData.shop) {
+      const shop = await models.Shop.findById(expenseData.shop);
+      if (shop) {
+        expenseData.shopName = shop.name;
+        expenseData.shopId = shop._id;
+      }
+    }
+
+    // Set default values if not provided
+    if (!expenseData.date) {
+      expenseData.date = new Date();
+    }
+    if (!expenseData.category) {
+      expenseData.category = 'General';
+    }
+    if (!expenseData.paymentMethod) {
+      expenseData.paymentMethod = 'cash';
+    }
+    if (!expenseData.status) {
+      expenseData.status = 'completed';
+    }
+
+    // Validate required fields
+    if (!expenseData.description || !expenseData.amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description and amount are required fields'
+      });
+    }
+
+    const expense = new models.Expense(expenseData);
+    await expense.save();
+    
+    await expense.populate('shop', 'name location');
+
+    console.log('✅ Expense created successfully:', {
+      expenseId: expense._id,
+      amount: expense.amount,
+      category: expense.category,
+      description: expense.description
+    });
+
+    res.status(201).json({
+      success: true,
+      data: expense,
+      message: 'Expense created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error creating expense:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create expense',
+      error: error.message
+    });
+  }
+});
+
+app.put('/api/expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const expense = await models.Expense.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    ).populate('shop', 'name location');
+
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expense not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: expense,
+      message: 'Expense updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating expense:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update expense',
+      error: error.message
+    });
+  }
+});
+
+app.delete('/api/expenses/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const expense = await models.Expense.findByIdAndDelete(id);
+
+    if (!expense) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expense not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Expense deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting expense:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete expense',
+      error: error.message
+    });
+  }
+});
+
+// ==================== ENHANCED CREDIT API ENDPOINTS ====================
+
+// Create credit record - WITH DEDUPLICATION CHECK
+app.post('/api/credits', async (req, res) => {
+  try {
+    const creditData = req.body;
+    
+    console.log('💳 Creating credit record with deduplication check:', {
+      transactionId: creditData.transactionId,
+      customerName: creditData.customerName
+    });
+
+    // Check for duplicate credit record
+    if (creditData.transactionId) {
+      const existingCredit = await models.Credit.findOne({ 
+        transactionId: creditData.transactionId 
+      });
+      
+      if (existingCredit) {
+        console.log('⚠️ Credit record already exists for transaction:', creditData.transactionId);
+        return res.status(409).json({
+          success: false,
+          message: 'Credit record already exists for this transaction',
+          data: existingCredit
+        });
+      }
+    }
+
+    // Auto-populate shop and cashier information if not provided
+    if (creditData.transactionId) {
+      const transaction = await models.Transaction.findById(creditData.transactionId);
+      if (transaction) {
+        if (!creditData.shop) creditData.shop = transaction.shop;
+        if (!creditData.shopId) creditData.shopId = transaction.shopId;
+        if (!creditData.shopName) creditData.shopName = transaction.shopName;
+        if (!creditData.cashierId) creditData.cashierId = transaction.cashierId;
+        if (!creditData.cashierName) creditData.cashierName = transaction.cashierName;
+      }
+    }
+
+    // Set default values
+    if (!creditData.status) {
+      creditData.status = creditData.balanceDue > 0 ? 'pending' : 'paid';
+    }
+
+    if (!creditData.dueDate) {
+      creditData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days default
+    }
+
+    // Initialize payment history if partial payment
+    if (!creditData.paymentHistory && creditData.amountPaid > 0) {
+      creditData.paymentHistory = [{
+        amount: creditData.amountPaid,
+        paymentDate: new Date(),
+        paymentMethod: 'initial',
+        recordedBy: creditData.recordedBy || 'System',
+        cashierName: creditData.cashierName,
+        notes: 'Initial payment',
+        isUpfrontPayment: true // NEW: Mark as upfront payment
+      }];
+    }
+
+    const credit = new models.Credit(creditData);
+    await credit.save();
+    
+    await credit.populate('transactionId');
+    await credit.populate('shop', 'name location type');
+    await credit.populate('cashierId', 'name email');
+
+    console.log('✅ Credit record created successfully with no duplication:', {
+      creditId: credit._id,
+      customerName: credit.customerName,
+      totalAmount: credit.totalAmount,
+      balanceDue: credit.balanceDue, // This now shows only the remaining balance
+      status: credit.status,
+      upfrontPayment: credit.upfrontPayment // NEW: Log upfront payment details
+    });
+
+    res.status(201).json({
+      success: true,
+      data: credit,
+      message: 'Credit record created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error creating credit record:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create credit record',
+      error: error.message
+    });
+  }
+});
+
+// Enhanced Credits API
 app.get('/api/credits', async (req, res) => {
   try {
-    const { shopId, status, cashierId, startDate, endDate } = req.query;
+    const { shopId, status, cashierId, startDate, endDate, includeTransactions = 'false' } = req.query;
     
     let filter = {};
     if (shopId && shopId !== 'all') {
@@ -1705,12 +3049,43 @@ app.get('/api/credits', async (req, res) => {
       .populate('cashierId', 'name email')
       .sort({ dueDate: 1 });
 
+    // Include transaction details if requested
+    let enhancedCredits = credits;
+    if (includeTransactions === 'true') {
+      enhancedCredits = await Promise.all(credits.map(async (credit) => {
+        if (credit.transactionId) {
+          const transaction = await models.Transaction.findById(credit.transactionId)
+            .populate('shop', 'name location type')
+            .populate('cashierId', 'name email')
+            .populate('items.productId', 'name buyingPrice');
+          return {
+            ...credit.toObject(),
+            transactionDetails: transaction
+          };
+        }
+        return credit;
+      }));
+    }
+
     res.json({
       success: true,
-      data: credits,
-      count: credits.length
+      data: enhancedCredits,
+      count: credits.length,
+      summary: {
+        totalCredits: credits.length,
+        totalCreditAmount: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.totalAmount), 0),
+        totalPaid: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.amountPaid), 0),
+        totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0), // This now shows only the remaining balance
+        totalUpfrontPayments: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.upfrontPayment?.amount || 0), 0), // NEW: Upfront payments
+        overdueCount: credits.filter(c => 
+          c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0
+        ).length
+      },
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
     });
   } catch (error) {
+    console.error('Error fetching credits:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch credits',
@@ -1719,13 +3094,305 @@ app.get('/api/credits', async (req, res) => {
   }
 });
 
+// Update credit record
+app.put('/api/credits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    const credit = await models.Credit.findByIdAndUpdate(
+      id,
+      { ...updateData, updatedAt: new Date() },
+      { new: true, runValidators: true }
+    )
+      .populate('transactionId')
+      .populate('shop', 'name location type')
+      .populate('cashierId', 'name email');
+
+    if (!credit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credit record not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: credit,
+      message: 'Credit record updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating credit record:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update credit record',
+      error: error.message
+    });
+  }
+});
+
+// Delete credit record
+app.delete('/api/credits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const credit = await models.Credit.findByIdAndDelete(id);
+
+    if (!credit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credit record not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Credit record deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting credit record:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete credit record',
+      error: error.message
+    });
+  }
+});
+
+// Get credit by ID
+app.get('/api/credits/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { includeTransaction = 'false' } = req.query;
+
+    let credit = await models.Credit.findById(id)
+      .populate('shop', 'name location type')
+      .populate('cashierId', 'name email');
+
+    if (!credit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credit record not found'
+      });
+    }
+
+    // Include transaction details if requested
+    if (includeTransaction === 'true' && credit.transactionId) {
+      const transaction = await models.Transaction.findById(credit.transactionId)
+        .populate('shop', 'name location type')
+        .populate('cashierId', 'name email')
+        .populate('items.productId', 'name buyingPrice');
+      
+      credit = credit.toObject();
+      credit.transactionDetails = transaction;
+    }
+
+    res.json({
+      success: true,
+      data: credit,
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+  } catch (error) {
+    console.error('Error fetching credit record:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch credit record',
+      error: error.message
+    });
+  }
+});
+
+// ENHANCED: Handle credit payment with proper state management
+app.patch('/api/credits/:id/payment', async (req, res) => {
+  try {
+    const { amount, paymentMethod, recordedBy, cashierName, notes } = req.body;
+    
+    if (!amount || !paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: amount, paymentMethod'
+      });
+    }
+
+    const credit = await models.Credit.findById(req.params.id);
+    if (!credit) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credit record not found'
+      });
+    }
+
+    const paymentAmount = CalculationUtils.safeNumber(amount);
+    const currentAmountPaid = CalculationUtils.safeNumber(credit.amountPaid);
+    const newAmountPaid = currentAmountPaid + paymentAmount;
+    const totalAmount = CalculationUtils.safeNumber(credit.totalAmount);
+    const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
+
+    // Add payment to history
+    credit.paymentHistory.push({
+      amount: paymentAmount,
+      paymentMethod,
+      recordedBy: recordedBy || 'System',
+      cashierName: cashierName || credit.cashierName,
+      paymentDate: new Date(),
+      notes: notes || `Payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
+    });
+
+    // Update amounts
+    credit.amountPaid = newAmountPaid;
+    credit.balanceDue = newBalanceDue; // This now shows only the remaining balance
+
+    // Update status
+    let newStatus = credit.status;
+    if (newBalanceDue <= 0) {
+      newStatus = 'paid';
+    } else if (newAmountPaid > 0) {
+      newStatus = 'partially_paid';
+    } else {
+      newStatus = 'pending';
+    }
+    credit.status = newStatus;
+
+    credit.updatedAt = new Date();
+    await credit.save();
+
+    // Update corresponding transaction to reflect payment
+    if (credit.transactionId) {
+      await models.Transaction.findByIdAndUpdate(credit.transactionId, {
+        amountPaid: newAmountPaid,
+        recognizedRevenue: newAmountPaid,
+        outstandingRevenue: newBalanceDue, // This now shows only the remaining balance
+        creditStatus: newStatus,
+        updatedAt: new Date()
+      });
+    }
+
+    await credit.populate('transactionId');
+    await credit.populate('shop', 'name location type');
+    await credit.populate('cashierId', 'name email');
+
+    console.log('✅ Payment recorded successfully for credit:', {
+      creditId: req.params.id,
+      paymentAmount,
+      newAmountPaid,
+      newBalanceDue, // This now shows only the remaining balance
+      status: newStatus
+    });
+
+    res.json({
+      success: true,
+      data: credit,
+      message: `Payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded successfully`
+    });
+  } catch (error) {
+    console.error('Error recording payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to record payment',
+      error: error.message
+    });
+  }
+});
+
+// ==================== ADDITIONAL UTILITY ENDPOINTS ====================
+
+// Shop performance endpoint
+app.get('/api/transactions/shop-performance/:shopId', async (req, res) => {
+  try {
+    const { shopId } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    const shop = await models.Shop.findById(shopId);
+    if (!shop) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shop not found'
+      });
+    }
+
+    const filters = { shopId, startDate, endDate };
+    const transactionData = await getAllTransactionData(filters);
+
+    res.json({
+      success: true,
+      data: {
+        performance: transactionData.financialStats,
+        transactions: transactionData.salesWithProfit,
+        credits: transactionData.credits,
+        expenses: transactionData.expenses,
+        shopDetails: shop
+      },
+      message: 'Shop performance data fetched successfully',
+      cogsMethodology: 'complete_sales_plus_credit_sales_made',
+      creditPartialPayment: 'supported',
+      immediateRevenueTracking: 'enabled',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching shop performance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch shop performance data',
+      error: error.message
+    });
+  }
+});
+
+// Debug endpoint
+app.get('/api/debug/database', async (req, res) => {
+  try {
+    const counts = {
+      products: await models.Product.countDocuments(),
+      shops: await models.Shop.countDocuments(),
+      cashiers: await models.Cashier.countDocuments(),
+      expenses: await models.Expense.countDocuments(),
+      transactions: await models.Transaction.countDocuments(),
+      users: await models.User.countDocuments(),
+      secureCodes: await models.SecureCode.countDocuments(),
+      credits: await models.Credit.countDocuments()
+    };
+    
+    res.json({
+      success: true,
+      counts,
+      database: mongoose.connection.name,
+      status: 'connected',
+      cogsCalculation: 'complete_sales_plus_credit_sales_made',
+      creditPartialPayment: 'supported',
+      immediateRevenueTracking: 'enabled',
+      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+      creditDisplayLogic: 'balance_due_only'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Database check failed',
+      error: error.message
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: process.env.APP_NAME || 'Seridah Chemist Management API',
+    message: process.env.APP_NAME || 'Stanzo Shop Management API',
     version: process.env.APP_VERSION || '1.0.0',
     status: 'running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      metrics: '/api/transactions/metrics',
+      combined: '/api/transactions/combined',
+      withCredits: '/api/transactions/with-credits',
+      cashierMetrics: '/api/cashier/dashboard-metrics'
+    },
+    cogsCalculation: 'complete_sales_plus_credit_sales_made',
+    creditPartialPayment: 'supported',
+    immediateRevenueTracking: 'enabled',
+    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+    creditDisplayLogic: 'balance_due_only'
   });
 });
 
@@ -1738,24 +3405,52 @@ app.use('/api/*', (req, res) => {
 });
 
 // ==================== SERVER START ====================
+
+
+// ==================== ENHANCED SERVER STARTUP ====================
+
 const startServer = async () => {
   try {
-    console.log('🚀 Starting Seridah Chemist Management Server...');
+    console.log('🚀 Starting Complete Seridah Chemist Management Server...');
+    console.log(`📋 App: ${process.env.APP_NAME || 'Seridah Chemist Management'}`);
     
+    // Start the server FIRST, then initialize in background
     const server = app.listen(PORT, () => {
       console.log(`\n🎉 Server listening on port ${PORT}`);
       console.log('⏳ Initialization in progress...');
+      console.log('📡 Health endpoint available at: http://localhost:' + PORT + '/api/health');
+      console.log('='.repeat(60));
     });
 
-    // Initialize server in background
+    // Initialize server in background (non-blocking)
     initializeServer().then(() => {
       console.log('\n✅ Server initialization completed successfully!');
       console.log('🟢 All endpoints are now available');
+      console.log('='.repeat(60));
+      console.log(`📊 Database: ${mongoose.connection.name}`);
+      console.log(`🧮 COGS Calculation: Complete Sales + Credit Sales Made`);
+      console.log(`💳 Credit Partial Payment: SUPPORTED ✅`);
+      console.log(`💰 Immediate Revenue Tracking: ENABLED ✅`);
+      console.log(`🎯 Upfront Credit Support: FULLY ENABLED ✅`);
+      console.log(`📈 Credit Display: BALANCE DUE ONLY ✅`);
+      console.log(`🔧 ALL ENDPOINTS AVAILABLE:`);
+      console.log(`   - GET  /api/shops ✅`);
+      console.log(`   - GET  /api/products ✅`);
+      console.log(`   - GET  /api/cashiers ✅`);
+      console.log(`   - GET  /api/expenses ✅`);
+      console.log(`   - GET  /api/credits ✅`);
+      console.log(`   - GET  /api/transactions/combined ✅`);
+      console.log(`   - GET  /api/cashier/dashboard-metrics ✅`);
+      console.log(`   - POST /api/transactions ✅ (Upfront Credit Supported)`);
+      console.log(`   - POST /api/credits ✅ (No Duplication)`);
+      console.log('='.repeat(60));
     }).catch(error => {
       console.error('\n💥 Server initialization failed:', error);
+      console.log('🔴 Some endpoints may not work properly');
+      console.log('🟡 Health endpoint should still be available');
     });
 
-    // Graceful shutdown
+    // Graceful shutdown handling
     process.on('SIGTERM', () => {
       console.log('🛑 SIGTERM received, shutting down gracefully');
       server.close(() => {
