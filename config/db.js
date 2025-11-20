@@ -14,17 +14,22 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`.cyan.underline);
     
     // Connection event listeners
-    mongoose.connection.on('connected', () => {
-      console.log('Mongoose connected to DB');
-    });
+ 
+    // Connection event handlers
+mongoose.connection.on('connected', () => {
+  console.log('✅ MongoDB connected');
+  serverStatus.services.database = true;
+});
 
-    mongoose.connection.on('error', (err) => {
-      console.error(`Mongoose connection error: ${err}`);
-    });
+mongoose.connection.on('disconnected', () => {
+  console.log('⚠️ MongoDB disconnected');
+  serverStatus.services.database = false;
+});
 
-    mongoose.connection.on('disconnected', () => {
-      console.log('Mongoose disconnected');
-    });
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err);
+  serverStatus.services.database = false;
+});
 
     // Close connection on app termination
     process.on('SIGINT', async () => {

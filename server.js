@@ -25,54 +25,48 @@ const PORT = process.env.PORT || 5001;
 // MongoDB connection optimized for Vercel
 const connectDB = async () => {
   try {
+    // If already connected, return
+    if (mongoose.connection.readyState === 1) {
+      console.log('✅ MongoDB already connected');
+      serverStatus.services.database = true;
+      return;
+    }
+
     const connectionString = process.env.MONGODB_URI;
     
     if (!connectionString) {
       console.error('❌ MONGODB_URI is not set in environment variables');
+      serverStatus.services.database = false;
       return;
     }
 
-    // Check if we're already connected
-    if (mongoose.connection.readyState === 1) {
-      console.log('✅ MongoDB already connected');
-      return;
-    }
-
-    console.log('🔗 Connecting to MongoDB...');
+    console.log('🔗 Connecting to MongoDB on Vercel...');
     
-    // Connection options optimized for Vercel/serverless
+    // Vercel-optimized connection options
     const options = {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // Increased timeout
       socketTimeoutMS: 45000,
-      maxPoolSize: 5,
+      bufferCommands: false,
+      bufferMaxEntries: 0,
+      maxPoolSize: 10,
       minPoolSize: 1,
       retryWrites: true,
-      bufferCommands: false,
-      bufferMaxEntries: 0
+      w: 'majority'
     };
 
     await mongoose.connect(connectionString, options);
     console.log('✅ MongoDB connected successfully');
-    
-    // Handle connection events
-    mongoose.connection.on('error', (err) => {
-      console.error('❌ MongoDB connection error:', err);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      console.log('⚠️ MongoDB disconnected');
-    });
-
-    mongoose.connection.on('connected', () => {
-      console.log('✅ MongoDB reconnected');
-    });
+    serverStatus.services.database = true;
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
-    // Don't throw - allow the server to start without DB
-    console.log('🟡 Server starting without database connection');
+    serverStatus.services.database = false;
+    // Don't throw in Vercel environment
+    console.log('🟡 Continuing with limited functionality');
   }
 };
+
+
 
 
 const createDefaultAdmin = async () => {
@@ -194,7 +188,21 @@ const initializeServer = async () => {
   }
 };
 
-
+app.get('/api/vercel-debug', (req, res) => {
+  res.json({
+    vercel: process.env.VERCEL,
+    vercelRegion: process.env.VERCEL_REGION,
+    vercelEnv: process.env.VERCEL_ENV,
+    nodeEnv: process.env.NODE_ENV,
+    mongodbUri: process.env.MONGODB_URI ? 'set' : 'not set',
+    mongooseState: mongoose.connection.readyState,
+    allEnvVars: Object.keys(process.env).filter(key => 
+      key.includes('VERCEL') || 
+      key.includes('MONGODB') || 
+      key.includes('EMAIL')
+    )
+  });
+});
 
 
 
@@ -1681,23 +1689,53 @@ async function handleCreditPayment(transactionData, res) {
 
 // ==================== COMPLETE API ENDPOINTS ====================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
+
+app.get('/api/health', async (req, res) => {
+  const dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+  const emailStatus = emailTransporter ? 'configured' : 'disabled';
+  
+  // Enhanced status checking
+  const healthStatus = {
     success: true,
-    status: 'healthy',
+    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
     timestamp: new Date().toISOString(),
-    app: process.env.APP_NAME || 'Seridah Chemist Management',
-    version: process.env.APP_VERSION || '1.0.0',
-    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    email: emailTransporter ? 'configured' : 'disabled',
+    app: 'Stanzo Shop Management',
+    version: '1.0.0',
+    database: dbStatus,
+    email: emailStatus,
     authentication: 'email-based-secure-code',
     cogsCalculation: 'complete_sales_plus_credit_sales_made',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
-    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-    creditDisplayLogic: 'balance_due_only'
-  });
+    upfrontCreditSupport: 'fully_enabled',
+    creditDisplayLogic: 'balance_due_only',
+    
+    // Add initialization status
+    initialization: {
+      isInitialized: serverStatus.isInitialized,
+      isInitializing: serverStatus.isInitializing,
+      services: serverStatus.services
+    },
+    
+    // Add connection details for debugging
+    connection: {
+      mongodb: {
+        readyState: mongoose.connection.readyState,
+        host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured'
+      }
+    }
+  };
+
+  // If database is disconnected but we're still initializing, show appropriate status
+  if (dbStatus === 'disconnected' && serverStatus.isInitializing) {
+    healthStatus.status = 'initializing';
+    healthStatus.message = 'Server is initializing database connection';
+  } else if (dbStatus === 'disconnected') {
+    healthStatus.status = 'degraded';
+    healthStatus.message = 'Database connection failed - some features may be unavailable';
+  }
+
+  res.json(healthStatus);
 });
 
 // Vercel-compatible health check
