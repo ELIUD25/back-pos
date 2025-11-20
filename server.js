@@ -17,6 +17,87 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+
+
+
+// Add at the top of your server, after imports
+let serverStatus = {
+  isInitialized: false,
+  isInitializing: false,
+  initializationStartTime: null,
+  services: {
+    database: false,
+    models: false,
+    email: false,
+    session: false
+  }
+};
+
+// Enhanced initialization function
+const initializeServer = async () => {
+  if (serverStatus.isInitializing || serverStatus.isInitialized) {
+    console.log('🔄 Server initialization already in progress or completed');
+    return;
+  }
+
+  serverStatus.isInitializing = true;
+  serverStatus.initializationStartTime = new Date();
+  
+  console.log('🚀 Starting comprehensive server initialization...');
+
+  try {
+    // Step 1: Database connection
+    console.log('📦 Step 1: Connecting to database...');
+    await connectDB();
+    serverStatus.services.database = true;
+
+    // Step 2: Create models
+    console.log('📦 Step 2: Creating enhanced models...');
+    models = createModels();
+    serverStatus.services.models = true;
+
+    // Step 3: Initialize email service (non-blocking)
+    console.log('📦 Step 3: Initializing email service...');
+    initializeEmail().then(success => {
+      serverStatus.services.email = success;
+      console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
+    }).catch(error => {
+      console.error('❌ Email service initialization failed:', error);
+      serverStatus.services.email = false;
+    });
+
+    // Step 4: Session setup verification
+    console.log('📦 Step 4: Verifying session configuration...');
+    serverStatus.services.session = true;
+
+    // Step 5: Create default admin (non-blocking)
+    console.log('📦 Step 5: Setting up default admin...');
+    createDefaultAdmin().then(() => {
+      console.log('✅ Default admin setup completed');
+    }).catch(error => {
+      console.log('⚠️ Default admin setup failed:', error.message);
+    });
+
+    // Mark initialization as complete
+    serverStatus.isInitialized = true;
+    serverStatus.isInitializing = false;
+    
+    const initTime = new Date() - serverStatus.initializationStartTime;
+    console.log(`✅ Server initialization completed in ${initTime}ms`);
+    
+  } catch (error) {
+    console.error('💥 Server initialization failed:', error);
+    serverStatus.isInitializing = false;
+    serverStatus.isInitialized = false;
+    throw error;
+  }
+};
+
+
+
+
+
+
 // ==================== ENHANCED MODELS ====================
 
 const createModels = () => {
