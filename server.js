@@ -18,7 +18,66 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 
 
+// ==================== DATABASE CONNECTION ====================
 
+const connectDB = async () => {
+  try {
+    const connectionString = process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0';
+    
+    console.log('🔗 Connecting to MongoDB...');
+    
+    await mongoose.connect(connectionString, {
+      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 25,
+      minPoolSize: 5,
+      retryWrites: true
+    });
+    
+    console.log('✅ MongoDB connected successfully');
+    
+  } catch (error) {
+    console.error('❌ MongoDB connection failed:', error.message);
+    process.exit(1);
+  }
+};
+
+const createDefaultAdmin = async () => {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL || 'chemistseridah@gmail.com';
+    
+    const existingAdmin = await models.User.findOne({ email: adminEmail });
+    if (!existingAdmin) {
+      await models.User.create({
+        email: adminEmail,
+        name: 'System Administrator',
+        role: 'admin'
+      });
+      console.log('✅ Default admin user created');
+    } else {
+      console.log('✅ Admin user already exists');
+    }
+  } catch (error) {
+    console.log('⚠️ Could not create admin user:', error.message);
+  }
+};
+
+// ==================== SESSION MIDDLEWARE ====================
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'stanzo_session_secret_change_in_production',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0',
+    collectionName: 'sessions'
+  }),
+  cookie: {
+    secure: false,
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
 
 // Add at the top of your server, after imports
 let serverStatus = {
