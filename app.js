@@ -19,41 +19,89 @@ const PORT = process.env.PORT || 5001;
 
 // app.use(cors(corsOptions));
 
-// Enhanced CORS Configuration for Vercel
+
+
+// ==================== ENHANCED CORS CONFIGURATION ====================
+
+// Enhanced CORS configuration
 const corsOptions = {
-  origin: [
-    'https://seridah-chemist.vercel.app',
-    'https://back-pos-five.vercel.app',
-    'http://localhost:3000' // for local development
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://seridah-chemist.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      process.env.CLIENT_URL
+    ].filter(Boolean);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('🚫 CORS blocked for origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
-    'Content-Type', 
+    'Content-Type',
     'Authorization',
-    'Accept', 
-    'X-Requested-With'
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Allow-Headers',
+    'Access-Control-Request-Headers',
+    'Access-Control-Allow-Origin'
   ],
-  exposedHeaders: ['Authorization'],
-  maxAge: 86400
+  exposedHeaders: [
+    'Content-Range',
+    'X-Content-Range',
+    'Content-Length',
+    'Content-Disposition'
+  ],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
+// Handle preflight requests globally
+app.options('*', cors(corsOptions));
 
-
-
-// Essential Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Security Headers Middleware
+// Additional CORS headers middleware
 app.use((req, res, next) => {
-  res.header('X-Content-Type-Options', 'nosniff');
-  res.header('X-Frame-Options', 'DENY');
-  res.header('X-XSS-Protection', '1; mode=block');
+  const origin = req.headers.origin;
+  
+  // Check if origin is in allowed list
+  const allowedOrigins = [
+    'https://seridah-chemist.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.CLIENT_URL
+  ].filter(Boolean);
+
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Max-Age', '86400');
+    return res.status(204).send();
+  }
+  
   next();
 });
+
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
