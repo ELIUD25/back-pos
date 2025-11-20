@@ -916,7 +916,7 @@ app.use(morgan('dev'));
 
 const connectDB = async () => {
   try {
-    const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/stanzo_db';
+    const connectionString = process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0';
     
     console.log('🔗 Connecting to MongoDB...');
     
