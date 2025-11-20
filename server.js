@@ -39,39 +39,55 @@ const connectDB = async () => {
       return false;
     }
 
-    console.log('🔗 Connecting to MongoDB on Vercel...');
+    console.log('🔗 Attempting MongoDB connection...');
     
-    // Vercel-optimized connection options
+    // Enhanced connection options for better reliability
     const options = {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
       bufferCommands: false,
       bufferMaxEntries: 0,
       maxPoolSize: 10,
-      minPoolSize: 1,
       retryWrites: true,
       w: 'majority'
     };
 
-    // ACTUALLY WAIT for connection to complete
+    // Force close any existing connections first
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.close();
+    }
+
+    // Connect with timeout
     await mongoose.connect(connectionString, options);
     
-    // Only mark as connected when readyState is actually 1
-    if (mongoose.connection.readyState === 1) {
-      console.log('✅ MongoDB connected successfully');
-      serverStatus.services.database = true;
-      return true;
-    } else {
-      console.log('❌ MongoDB connection incomplete');
-      serverStatus.services.database = false;
-      return false;
-    }
+    console.log('✅ MongoDB connected successfully');
+    serverStatus.services.database = true;
+    return true;
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
     serverStatus.services.database = false;
     return false;
   }
+};
+
+const connectWithRetry = async (retries = 5, delay = 5000) => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    console.log(`🔄 Connection attempt ${attempt}/${retries}...`);
+    
+    const connected = await connectDB();
+    if (connected) {
+      return true;
+    }
+    
+    if (attempt < retries) {
+      console.log(`⏳ Retrying in ${delay/1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  console.error(`💥 Failed to connect after ${retries} attempts`);
+  return false;
 };
 
 // Connection event handlers for accurate state tracking
@@ -151,7 +167,6 @@ let serverStatus = {
 };
 
 // Enhanced initialization function
-
 const initializeServer = async () => {
   if (serverStatus.isInitializing || serverStatus.isInitialized) {
     console.log('🔄 Server initialization already in progress or completed');
@@ -161,67 +176,76 @@ const initializeServer = async () => {
   serverStatus.isInitializing = true;
   serverStatus.initializationStartTime = new Date();
   
-  console.log('🚀 Starting Vercel server initialization...');
+  console.log('🚀 Starting server initialization...');
 
   try {
-    // Add timeout for Vercel
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Initialization timeout')), 15000);
+    // Step 1: Database connection with retry
+    console.log('📦 Step 1: Connecting to database...');
+    const dbConnected = await connectWithRetry(3, 5000);
+    
+    if (!dbConnected) {
+      throw new Error('Database connection failed after retries');
+    }
+    
+    // Step 2: Create models
+    console.log('📦 Step 2: Creating models...');
+    models = createModels();
+    serverStatus.services.models = true;
+
+    // Step 3: Initialize email service (non-blocking)
+    console.log('📦 Step 3: Initializing email service...');
+    initializeEmail().then(success => {
+      serverStatus.services.email = success;
+    }).catch(error => {
+      console.error('❌ Email service initialization failed:', error);
+      serverStatus.services.email = false;
     });
 
-    // Race between initialization and timeout
-    await Promise.race([
-      (async () => {
-        // Step 1: Database connection (WAIT for it to complete)
-        console.log('📦 Step 1: Connecting to database on Vercel...');
-        const dbConnected = await connectDB();
-        
-        if (!dbConnected) {
-          throw new Error('Database connection failed');
-        }
-        
-        // Step 2: Create models (only if DB is connected)
-        console.log('📦 Step 2: Creating enhanced models...');
-        models = createModels();
-        serverStatus.services.models = true;
+    // Step 4: Create default admin
+    console.log('📦 Step 4: Setting up default admin...');
+    createDefaultAdmin().then(() => {
+      console.log('✅ Default admin setup completed');
+    }).catch(error => {
+      console.log('⚠️ Default admin setup failed:', error.message);
+    });
 
-        // Step 3: Initialize email service (non-blocking)
-        console.log('📦 Step 3: Initializing email service...');
-        initializeEmail().then(success => {
-          serverStatus.services.email = success;
-          console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
-        }).catch(error => {
-          console.error('❌ Email service initialization failed:', error);
-          serverStatus.services.email = false;
-        });
-
-        // Step 4: Create default admin (non-blocking, only if DB connected)
-        console.log('📦 Step 4: Setting up default admin...');
-        if (dbConnected) {
-          createDefaultAdmin().then(() => {
-            console.log('✅ Default admin setup completed');
-          }).catch(error => {
-            console.log('⚠️ Default admin setup failed:', error.message);
-          });
-        }
-
-        // Mark initialization as complete
-        serverStatus.isInitialized = true;
-        serverStatus.isInitializing = false;
-        
-        const initTime = new Date() - serverStatus.initializationStartTime;
-        console.log(`✅ Vercel server initialization completed in ${initTime}ms`);
-      })(),
-      timeoutPromise
-    ]);
+    // Mark initialization as complete
+    serverStatus.isInitialized = true;
+    serverStatus.isInitializing = false;
+    
+    const initTime = new Date() - serverStatus.initializationStartTime;
+    console.log(`✅ Server initialization completed in ${initTime}ms`);
     
   } catch (error) {
-    console.error('💥 Vercel server initialization failed:', error);
+    console.error('💥 Server initialization failed:', error);
     serverStatus.isInitializing = false;
     serverStatus.isInitialized = false;
-    console.log('🟡 Continuing with limited functionality');
+    
+    // Even if initialization fails, the server can still run with limited functionality
+    console.log('🟡 Continuing with limited functionality - database operations will fail');
   }
 };
+
+app.get('/api/connection-status', async (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const states = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+
+  res.json({
+    database: {
+      state: dbState,
+      status: states[dbState],
+      host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured',
+      name: mongoose.connection.name || 'not connected'
+    },
+    serverStatus: serverStatus,
+    timestamp: new Date().toISOString()
+  });
+});
 
 app.get('/api/vercel-debug', (req, res) => {
   res.json({

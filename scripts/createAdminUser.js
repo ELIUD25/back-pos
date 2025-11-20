@@ -6,7 +6,7 @@ require('dotenv').config();
 const createAdminUser = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://real:real@real.70qrjj4.mongodb.net/?retryWrites=true&w=majority&appName=real');
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0');
     console.log('✅ Connected to MongoDB');
     
     // FIXED PATH: Go up one level to backend root, then into models
