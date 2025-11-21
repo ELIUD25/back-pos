@@ -8,38 +8,44 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000, // Timeout after 5s
       socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
       maxPoolSize: 10, // Maintain up to 10 socket connections
-      minPoolSize: 2 // Maintain at least 2 socket connections
+      minPoolSize: 2, // Maintain at least 2 socket connections
+      retryWrites: true,
+      w: 'majority'
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`.cyan.underline);
     
-    // Connection event listeners
- 
     // Connection event handlers
-mongoose.connection.on('connected', () => {
-  console.log('✅ MongoDB connected');
-  serverStatus.services.database = true;
-});
+    mongoose.connection.on('connected', () => {
+      console.log('✅ MongoDB connected');
+      if (typeof serverStatus !== 'undefined') {
+        serverStatus.services.database = true;
+      }
+    });
 
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB disconnected');
-  serverStatus.services.database = false;
-});
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+      if (typeof serverStatus !== 'undefined') {
+        serverStatus.services.database = false;
+      }
+    });
 
-mongoose.connection.on('error', (err) => {
-  console.error('❌ MongoDB connection error:', err);
-  serverStatus.services.database = false;
-});
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      if (typeof serverStatus !== 'undefined') {
+        serverStatus.services.database = false;
+      }
+    });
 
-    // Close connection on app termination
+    // Handle application termination
     process.on('SIGINT', async () => {
       await mongoose.connection.close();
-      console.log('Mongoose connection closed through app termination');
+      console.log('MongoDB connection closed due to app termination');
       process.exit(0);
     });
 
-  } catch (err) {
-    console.error(`❌ Database connection error: ${err.message}`.red);
+  } catch (error) {
+    console.error('❌ MongoDB connection error:'.red, error);
     process.exit(1);
   }
 };
