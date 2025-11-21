@@ -121,103 +121,6 @@ let serverStatus = {
   }
 };
 
-// Enhanced initialization function
-const initializeServer = async () => {
-  if (serverStatus.isInitializing || serverStatus.isInitialized) {
-    console.log('🔄 Server initialization already in progress or completed');
-    return;
-  }
-
-  serverStatus.isInitializing = true;
-  serverStatus.initializationStartTime = new Date();
-  
-  console.log('🚀 Starting server initialization...');
-
-  try {
-    // Step 1: Database connection with retry
-    console.log('📦 Step 1: Connecting to database...');
-    const dbConnected = await connectWithRetry(3, 5000);
-    
-    if (!dbConnected) {
-      throw new Error('Database connection failed after retries');
-    }
-    
-    // Step 2: Create models
-    console.log('📦 Step 2: Creating models...');
-    models = createModels();
-    serverStatus.services.models = true;
-
-    // Step 3: Initialize email service (non-blocking)
-    console.log('📦 Step 3: Initializing email service...');
-    initializeEmail().then(success => {
-      serverStatus.services.email = success;
-    }).catch(error => {
-      console.error('❌ Email service initialization failed:', error);
-      serverStatus.services.email = false;
-    });
-
-    // Step 4: Create default admin
-    console.log('📦 Step 4: Setting up default admin...');
-    createDefaultAdmin().then(() => {
-      console.log('✅ Default admin setup completed');
-    }).catch(error => {
-      console.log('⚠️ Default admin setup failed:', error.message);
-    });
-
-    // Mark initialization as complete
-    serverStatus.isInitialized = true;
-    serverStatus.isInitializing = false;
-    
-    const initTime = new Date() - serverStatus.initializationStartTime;
-    console.log(`✅ Server initialization completed in ${initTime}ms`);
-    
-  } catch (error) {
-    console.error('💥 Server initialization failed:', error);
-    serverStatus.isInitializing = false;
-    serverStatus.isInitialized = false;
-    
-    // Even if initialization fails, the server can still run with limited functionality
-    console.log('🟡 Continuing with limited functionality - database operations will fail');
-  }
-};
-
-const createDefaultAdmin = async () => {
-  try {
-    const adminEmail = process.env.ADMIN_EMAIL || 'chemistseridah@gmail.com';
-    
-    const existingAdmin = await models.User.findOne({ email: adminEmail });
-    if (!existingAdmin) {
-      await models.User.create({
-        email: adminEmail,
-        name: 'System Administrator',
-        role: 'admin'
-      });
-      console.log('✅ Default admin user created');
-    } else {
-      console.log('✅ Admin user already exists');
-    }
-  } catch (error) {
-    console.log('⚠️ Could not create admin user:', error.message);
-  }
-};
-
-// ==================== SESSION MIDDLEWARE ====================
-
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'stanzo_session_secret_change_in_production',
-  resave: false,
-  saveUninitialized: false,
-  store: MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0',
-    collectionName: 'sessions'
-  }),
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
-  }
-}));
-
 // ==================== ENHANCED MODELS ====================
 
 const createModels = () => {
@@ -440,9 +343,226 @@ const createModels = () => {
   return models;
 };
 
-let models = {};
+let models = null;
 
-// ==================== UPDATED CALCULATION UTILITIES WITH COMPLETE UPFRONT CREDIT SUPPORT ====================
+// ==================== ENHANCED EMAIL CONFIGURATION ====================
+
+const createEmailTransporter = () => {
+  try {
+    const emailUser = process.env.EMAIL_USER || 'chemistseridah@gmail.com';
+    const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
+
+    console.log('📧 Configuring email transporter...');
+    
+    if (!emailUser || !emailPass) {
+      console.error('❌ Email credentials not configured');
+      return null;
+    }
+
+    // Enhanced email configuration with better error handling
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+      debug: process.env.NODE_ENV === 'development',
+      logger: process.env.NODE_ENV === 'development'
+    });
+
+    console.log('✅ Email transporter created successfully');
+    return transporter;
+  } catch (error) {
+    console.error('❌ Error creating email transporter:', error.message);
+    return null;
+  }
+};
+
+let emailTransporter = null;
+
+const initializeEmail = async () => {
+  try {
+    emailTransporter = createEmailTransporter();
+    if (!emailTransporter) {
+      console.log('⚠️ Email transporter not created - email functionality disabled');
+      return false;
+    }
+
+    // Verify connection
+    await emailTransporter.verify();
+    console.log('✅ Email transporter is ready and verified');
+    return true;
+  } catch (error) {
+    console.error('❌ Email configuration error:', error.message);
+    console.log('⚠️ Email functionality will be disabled');
+    return false;
+  }
+};
+
+// ==================== ENHANCED INITIALIZATION ====================
+
+const createDefaultAdmin = async () => {
+  try {
+    if (!models || !models.User) {
+      console.log('⚠️ Models not ready for admin creation');
+      return;
+    }
+
+    const adminEmail = process.env.ADMIN_EMAIL || 'chemistseridah@gmail.com';
+    
+    const existingAdmin = await models.User.findOne({ email: adminEmail });
+    if (!existingAdmin) {
+      await models.User.create({
+        email: adminEmail,
+        name: 'System Administrator',
+        role: 'admin'
+      });
+      console.log('✅ Default admin user created');
+    } else {
+      console.log('✅ Admin user already exists');
+    }
+  } catch (error) {
+    console.log('⚠️ Could not create admin user:', error.message);
+  }
+};
+
+// Enhanced initialization function with better error handling
+const initializeServer = async () => {
+  if (serverStatus.isInitializing || serverStatus.isInitialized) {
+    console.log('🔄 Server initialization already in progress or completed');
+    return;
+  }
+
+  serverStatus.isInitializing = true;
+  serverStatus.initializationStartTime = new Date();
+  
+  console.log('🚀 Starting server initialization...');
+
+  try {
+    // Step 1: Database connection with retry
+    console.log('📦 Step 1: Connecting to database...');
+    const dbConnected = await connectWithRetry(3, 5000);
+    
+    if (!dbConnected) {
+      throw new Error('Database connection failed after retries');
+    }
+    
+    // Step 2: Create models
+    console.log('📦 Step 2: Creating models...');
+    models = createModels();
+    serverStatus.services.models = true;
+
+    // Step 3: Initialize email service (non-blocking)
+    console.log('📦 Step 3: Initializing email service...');
+    initializeEmail().then(success => {
+      serverStatus.services.email = success;
+      console.log(success ? '✅ Email service initialized' : '⚠️ Email service disabled');
+    }).catch(error => {
+      console.error('❌ Email service initialization failed:', error);
+      serverStatus.services.email = false;
+    });
+
+    // Step 4: Create default admin (non-blocking)
+    console.log('📦 Step 4: Setting up default admin...');
+    createDefaultAdmin().then(() => {
+      console.log('✅ Default admin setup completed');
+    }).catch(error => {
+      console.log('⚠️ Default admin setup failed:', error.message);
+    });
+
+    // Mark initialization as complete
+    serverStatus.isInitialized = true;
+    serverStatus.isInitializing = false;
+    
+    const initTime = new Date() - serverStatus.initializationStartTime;
+    console.log(`✅ Server initialization completed in ${initTime}ms`);
+    
+  } catch (error) {
+    console.error('💥 Server initialization failed:', error);
+    serverStatus.isInitializing = false;
+    serverStatus.isInitialized = false;
+    
+    // Even if initialization fails, the server can still run with limited functionality
+    console.log('🟡 Continuing with limited functionality - some features may not work');
+  }
+};
+
+// ==================== MIDDLEWARE SETUP ====================
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
+
+app.use((req, res, next) => {
+  res.removeHeader('X-Powered-By');
+  next();
+});
+
+app.use(compression());
+
+// CORS CONFIGURATION
+app.use(cors({
+  origin: [
+    'https://seridah-chemist.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: 'Too many requests' }
+});
+app.use('/api/', limiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many authentication attempts' }
+});
+
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { success: false, message: 'Too many email requests' }
+});
+
+app.use('/api/auth/request-code', emailLimiter);
+app.use('/api/auth/verify-code', authLimiter);
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.use(morgan('dev'));
+
+// ==================== SESSION MIDDLEWARE ====================
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'stanzo_session_secret_change_in_production',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0',
+    collectionName: 'sessions'
+  }),
+  cookie: {
+    secure: false,
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
+
+// ==================== UPDATED CALCULATION UTILITIES ====================
 
 const CalculationUtils = {
   safeNumber: (value, defaultValue = 0) => {
@@ -474,8 +594,6 @@ const CalculationUtils = {
     if (!Array.isArray(transactions)) return 0;
     
     return transactions.reduce((sum, transaction) => {
-      // Include COGS for both complete sales and credit sales
-      // Credit sales contribute to COGS when the sale is made, not when payment is received
       const cost = CalculationUtils.safeNumber(transaction.cost);
       return sum + cost;
     }, 0);
@@ -484,7 +602,6 @@ const CalculationUtils = {
   // ENHANCED: Calculate cost from items with product data integration
   calculateCostFromItems: async (transaction, products = []) => {
     try {
-      // If cost is already provided and valid, use it
       if (transaction.cost && CalculationUtils.safeNumber(transaction.cost) > 0) {
         return CalculationUtils.safeNumber(transaction.cost);
       }
@@ -493,25 +610,20 @@ const CalculationUtils = {
         return CalculationUtils.safeNumber(transaction.totalCost);
       }
 
-      // Calculate cost from items
       if (transaction.items && Array.isArray(transaction.items)) {
         let totalCost = 0;
         
         for (const item of transaction.items) {
           const quantity = CalculationUtils.safeNumber(item.quantity, 1);
           
-          // Try to get cost from different sources in priority order
           let itemCost = 0;
           
-          // Priority 1: Direct cost field in item
           if (item.cost && CalculationUtils.safeNumber(item.cost) > 0) {
             itemCost = CalculationUtils.safeNumber(item.cost);
           }
-          // Priority 2: Buying price field in item
           else if (item.buyingPrice && CalculationUtils.safeNumber(item.buyingPrice) > 0) {
             itemCost = CalculationUtils.safeNumber(item.buyingPrice);
           }
-          // Priority 3: Look up product buying price from products array
           else if (item.productId && products.length > 0) {
             const product = products.find(p => 
               p._id && item.productId && 
@@ -521,19 +633,15 @@ const CalculationUtils = {
             
             if (product) {
               itemCost = CalculationUtils.safeNumber(product.buyingPrice);
-              console.log(`📦 Found product buying price for ${product.name}: ${itemCost}`);
             }
           }
-          // Priority 4: Use a default cost estimation (30% of price as fallback)
           else if (item.price && CalculationUtils.safeNumber(item.price) > 0) {
-            itemCost = CalculationUtils.safeNumber(item.price) * 0.3; // Estimate 30% cost
-            console.log(`⚠️ Using estimated cost for item: ${itemCost} (30% of price ${item.price})`);
+            itemCost = CalculationUtils.safeNumber(item.price) * 0.3;
           }
 
           totalCost += itemCost * quantity;
         }
         
-        console.log(`🧮 Calculated cost for transaction ${transaction._id}: ${totalCost} from ${transaction.items.length} items`);
         return totalCost;
       }
       
@@ -549,25 +657,20 @@ const CalculationUtils = {
     try {
       if (!transaction) return CalculationUtils.createFallbackTransaction();
 
-      // ENHANCED: Multiple ways to detect credit transactions
       const isCredit = transaction.paymentMethod === 'credit' || 
                       transaction.isCredit === true || 
                       transaction.transactionType === 'credit' ||
                       transaction.isCreditTransaction === true ||
                       transaction.status === 'credit';
       
-      // Use server-calculated values when available, otherwise calculate
       const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) || 
                          CalculationUtils.safeNumber(transaction.amount) || 0;
       
-      // ENHANCED: Use the new cost calculation function with products data
       const cost = await CalculationUtils.calculateCostFromItems(transaction, products);
       
-      // ENHANCED: Credit management revenue recognition logic with upfront payment support
       const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) || 
                         CalculationUtils.safeNumber(transaction.paidAmount) || 0;
       
-      // UPDATED: For credit transactions, recognized revenue is the amount paid immediately (upfront payment)
       const recognizedRevenue = isCredit ? amountPaid : totalAmount;
       
       const outstandingRevenue = isCredit ? 
@@ -575,11 +678,9 @@ const CalculationUtils = {
          CalculationUtils.safeNumber(transaction.balanceDue) || 
          Math.max(0, totalAmount - amountPaid)) : 0;
 
-      // Calculate profit metrics
-      const profit = recognizedRevenue - cost; // UPDATED: Profit based on recognized revenue
+      const profit = recognizedRevenue - cost;
       const profitMargin = CalculationUtils.calculateProfitMargin(recognizedRevenue, profit);
       
-      // Determine credit status
       let creditStatus = 'completed';
       if (isCredit) {
         if (outstandingRevenue <= 0) {
@@ -590,13 +691,11 @@ const CalculationUtils = {
           creditStatus = 'pending';
         }
         
-        // Check if overdue
         if (transaction.dueDate && new Date(transaction.dueDate) < new Date() && outstandingRevenue > 0) {
           creditStatus = 'overdue';
         }
       }
 
-      // ENHANCED: Calculate payment splits with upfront credit support
       let paymentSplit = transaction.paymentSplit || {
         cash: 0,
         bank_mpesa: 0,
@@ -605,7 +704,6 @@ const CalculationUtils = {
         upfront_bank_mpesa: 0
       };
 
-      // If paymentSplit doesn't have upfront fields, initialize them
       if (!paymentSplit.upfront_cash && !paymentSplit.upfront_bank_mpesa) {
         if (isCredit && transaction.upfrontPaymentDetails) {
           paymentSplit.upfront_cash = CalculationUtils.safeNumber(transaction.upfrontPaymentDetails.split?.cash);
@@ -624,7 +722,7 @@ const CalculationUtils = {
         outstandingRevenue,
         amountPaid,
         creditStatus,
-        paymentSplit, // ENHANCED: Include updated payment split
+        paymentSplit,
         itemsCount: transaction.items ? transaction.items.reduce((sum, item) => 
           sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0,
         displayDate: transaction.displayDate || 
@@ -670,40 +768,33 @@ const CalculationUtils = {
       products: products.length
     });
 
-    // Enhanced sales with profit calculation using the new processSingleTransaction
     const salesWithProfit = await Promise.all(
       transactions.map(transaction => 
         CalculationUtils.processSingleTransaction(transaction, products)
       )
     );
 
-    // Filter transactions based on shop if provided
     const filteredTransactions = selectedShop && selectedShop !== 'all' ? 
       salesWithProfit.filter(t => 
         t.shop === selectedShop || t.shopId === selectedShop
       ) : salesWithProfit;
 
-    // Calculate all required metrics
     const totalTransactions = filteredTransactions.length;
     const creditTransactions = filteredTransactions.filter(t => t.isCreditTransaction);
     const nonCreditTransactions = filteredTransactions.filter(t => !t.isCreditTransaction);
     const completeTransactions = filteredTransactions.filter(t => t.status === 'completed');
 
-    // ENHANCED Revenue calculations with upfront credit support
     const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const creditSales = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     
-    // UPDATED COGS CALCULATION: Sum up all transaction costs (both complete + credit sales)
     const costOfGoodsSold = CalculationUtils.calculateCOGS(filteredTransactions);
     
     const grossProfit = totalRevenue - costOfGoodsSold;
     
-    // Expense calculations
     const totalExpenses = expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0);
     const netProfit = grossProfit - totalExpenses;
     
-    // ENHANCED Payment method calculations with upfront credit support
     let totalCash = 0;
     let totalMpesaBank = 0;
     let totalCredit = 0;
@@ -711,7 +802,6 @@ const CalculationUtils = {
     let totalUpfrontMpesaBank = 0;
 
     filteredTransactions.forEach(transaction => {
-      // Use paymentSplit with upfront credit support
       if (transaction.paymentSplit) {
         totalCash += CalculationUtils.safeNumber(transaction.paymentSplit.cash);
         totalMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.bank_mpesa);
@@ -719,7 +809,6 @@ const CalculationUtils = {
         totalUpfrontCash += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_cash);
         totalUpfrontMpesaBank += CalculationUtils.safeNumber(transaction.paymentSplit.upfront_bank_mpesa);
       } else {
-        // Fallback calculation based on paymentMethod
         if (transaction.paymentMethod === 'cash') {
           totalCash += CalculationUtils.safeNumber(transaction.recognizedRevenue);
         } else if (['mpesa', 'bank', 'card', 'bank_mpesa'].includes(transaction.paymentMethod)) {
@@ -727,7 +816,6 @@ const CalculationUtils = {
         } else if (transaction.paymentMethod === 'credit') {
           totalCredit += CalculationUtils.safeNumber(transaction.recognizedRevenue);
         } else if (transaction.paymentMethod === 'cash_bank_mpesa') {
-          // Split evenly as fallback
           const half = CalculationUtils.safeNumber(transaction.recognizedRevenue) / 2;
           totalCash += half;
           totalMpesaBank += half;
@@ -735,11 +823,9 @@ const CalculationUtils = {
       }
     });
 
-    // ENHANCED: Include upfront payments in cash and bank_mpesa totals
     totalCash += totalUpfrontCash;
     totalMpesaBank += totalUpfrontMpesaBank;
     
-    // Credit calculations
     const outstandingCredit = credits
       .filter(credit => credit.status !== 'paid' && 
         (!selectedShop || selectedShop === 'all' || 
@@ -750,9 +836,7 @@ const CalculationUtils = {
     const recognizedCreditRevenue = creditTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const totalUpfrontPayments = creditTransactions.reduce((sum, t) => sum + t.amountPaid, 0);
 
-    // Enhanced financial stats matching the image requirements with upfront credit support
     const financialStats = {
-      // Core metrics from image
       totalSales: totalTransactions,
       creditSales: creditSales,
       nonCreditSales: nonCreditSales,
@@ -767,12 +851,10 @@ const CalculationUtils = {
       outstandingCredit: outstandingCredit,
       totalCreditGiven: totalCreditGiven,
 
-      // NEW: Upfront payment metrics
       totalUpfrontPayments: totalUpfrontPayments,
       totalUpfrontCash: totalUpfrontCash,
       totalUpfrontMpesaBank: totalUpfrontMpesaBank,
 
-      // Additional detailed metrics
       creditSalesCount: creditTransactions.length,
       nonCreditSalesCount: nonCreditTransactions.length,
       completeTransactionsCount: completeTransactions.length,
@@ -783,14 +865,12 @@ const CalculationUtils = {
       totalItemsSold: filteredTransactions.reduce((sum, t) => sum + t.itemsCount, 0),
       averageTransactionValue: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
 
-      // UPDATED: COGS breakdown for analysis
       cogsBreakdown: {
         total: costOfGoodsSold,
         fromCreditSales: CalculationUtils.calculateCOGS(creditTransactions),
         fromCompleteSales: CalculationUtils.calculateCOGS(nonCreditTransactions)
       },
 
-      // Metadata
       _cogsCalculation: 'complete_sales_plus_credit_sales_made',
       _revenueCalculation: 'recognized_revenue_includes_upfront_payments',
       _paymentTracking: 'payment_split_with_upfront_support',
@@ -810,7 +890,6 @@ const CalculationUtils = {
       cogsBreakdown: financialStats.cogsBreakdown
     });
 
-    // Sales performance summary
     const salesPerformanceSummary = {
       totalSales: financialStats.totalSales,
       creditSales: financialStats.creditSalesCount,
@@ -832,10 +911,7 @@ const CalculationUtils = {
       _revenueMethodology: 'recognized_revenue_includes_upfront_payments'
     };
 
-    // Calculate top products
     const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 10);
-    
-    // Calculate shop performance
     const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
 
     return {
@@ -960,54 +1036,6 @@ const CalculationUtils = {
   }
 };
 
-// ==================== EMAIL CONFIGURATION ====================
-
-const createEmailTransporter = () => {
-  try {
-    const emailUser = process.env.EMAIL_USER || 'chemistseridah@gmail.com';
-    const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
-
-    console.log('📧 Configuring email transporter...');
-    
-    if (!emailUser || !emailPass) {
-      throw new Error('Email credentials not configured');
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      auth: {
-        user: emailUser,
-        pass: emailPass,
-      },
-      debug: false,
-      logger: false
-    });
-
-    return transporter;
-  } catch (error) {
-    console.error('❌ Error creating email transporter:', error.message);
-    throw error;
-  }
-};
-
-let emailTransporter = null;
-
-const initializeEmail = async () => {
-  try {
-    emailTransporter = createEmailTransporter();
-    await emailTransporter.verify();
-    console.log('✅ Email transporter is ready and verified');
-    return true;
-  } catch (error) {
-    console.error('❌ Email configuration error:', error.message);
-    console.log('⚠️ Email functionality will be disabled');
-    return false;
-  }
-};
-
 // ==================== SECURE CODE AUTHENTICATION ====================
 
 const generateSecureCode = () => {
@@ -1016,38 +1044,45 @@ const generateSecureCode = () => {
 
 const sendSecureCodeEmail = async (email, code) => {
   if (!emailTransporter) {
-    throw new Error('Email service not configured');
+    console.log('📧 Email service not available - sending code in response');
+    return { success: false, developmentMode: true, code };
   }
 
-  const mailOptions = {
-    from: process.env.EMAIL_USER || 'chemistseridah@gmail.com',
-    to: email,
-    subject: 'Your Secure Login Code - Seridah Chemist Management',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
-          Seridah Chemist Management - Secure Login
-        </h2>
-        <p>Hello,</p>
-        <p>Your secure login code for Seridah Chemist Management System is:</p>
-        <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
-          ${code}
+  try {
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'chemistseridah@gmail.com',
+      to: email,
+      subject: 'Your Secure Login Code - Seridah Chemist Management',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+            Seridah Chemist Management - Secure Login
+          </h2>
+          <p>Hello,</p>
+          <p>Your secure login code for Seridah Chemist Management System is:</p>
+          <div style="background: #f8f9fa; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 25px 0; border: 2px dashed #4CAF50; border-radius: 8px;">
+            ${code}
+          </div>
+          <p style="color: #666; font-size: 14px;">
+            This code will expire in 15 minutes for security reasons.
+          </p>
+          <p style="color: #999; font-size: 12px;">
+            If you didn't request this code, please ignore this email or contact support if you're concerned.
+          </p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+          <p style="color: #888; font-size: 11px;">
+            This is an automated message from Seridah Chemist Management System.
+          </p>
         </div>
-        <p style="color: #666; font-size: 14px;">
-          This code will expire in 15 minutes for security reasons.
-        </p>
-        <p style="color: #999; font-size: 12px;">
-          If you didn't request this code, please ignore this email or contact support if you're concerned.
-        </p>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="color: #888; font-size: 11px;">
-          This is an automated message from Seridah Chemist Management System.
-        </p>
-      </div>
-    `
-  };
+      `
+    };
 
-  await emailTransporter.sendMail(mailOptions);
+    await emailTransporter.sendMail(mailOptions);
+    return { success: true };
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
+    return { success: false, error: error.message, developmentMode: true, code };
+  }
 };
 
 const generateAuthToken = (userId, email, role) => {
@@ -1062,61 +1097,6 @@ const generateAuthToken = (userId, email, role) => {
     { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
   );
 };
-
-// ==================== MIDDLEWARE SETUP ====================
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
-
-app.use((req, res, next) => {
-  res.removeHeader('X-Powered-By');
-  next();
-});
-
-app.use(compression());
-
-// SINGLE CORS CONFIGURATION - Remove duplicates by keeping only this one
-app.use(cors({
-  origin: [
-    'https://seridah-chemist.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
-
-// Handle preflight requests
-app.options('*', cors());
-
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 1000,
-  message: { success: false, message: 'Too many requests' }
-});
-app.use('/api/', limiter);
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many authentication attempts' }
-});
-
-const emailLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: { success: false, message: 'Too many email requests' }
-});
-
-app.use('/api/auth/request-code', emailLimiter);
-app.use('/api/auth/verify-code', authLimiter);
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-app.use(morgan('dev'));
 
 // ==================== AUTHENTICATION MIDDLEWARE ====================
 
@@ -1143,103 +1123,667 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// ==================== ENHANCED TRANSACTION DATA FETCHING ====================
+// ==================== ENHANCED HEALTH AND STATUS ENDPOINTS ====================
 
-const getAllTransactionData = async (filters = {}) => {
+app.get('/api/health', async (req, res) => {
+  const dbReadyState = mongoose.connection.readyState;
+  const dbStatus = dbReadyState === 1 ? 'connected' : 'disconnected';
+  const emailStatus = emailTransporter ? 'configured' : 'disabled';
+  
+  const healthStatus = {
+    success: true,
+    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
+    timestamp: new Date().toISOString(),
+    app: 'Stanzo Shop Management',
+    version: '1.0.0',
+    database: dbStatus,
+    email: emailStatus,
+    authentication: 'email-based-secure-code',
+    cogsCalculation: 'complete_sales_plus_credit_sales_made',
+    creditPartialPayment: 'supported',
+    immediateRevenueTracking: 'enabled',
+    upfrontCreditSupport: 'fully_enabled',
+    creditDisplayLogic: 'balance_due_only',
+    
+    initialization: {
+      isInitialized: serverStatus.isInitialized,
+      isInitializing: serverStatus.isInitializing,
+      services: serverStatus.services
+    },
+    
+    connection: {
+      mongodb: {
+        readyState: dbReadyState,
+        readyStateText: getMongoDBStateText(dbReadyState),
+        host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured'
+      }
+    }
+  };
+
+  if (dbReadyState === 0) {
+    healthStatus.status = 'disconnected';
+    healthStatus.message = 'Database disconnected - check MONGODB_URI and network connection';
+  } else if (dbReadyState === 2) {
+    healthStatus.status = 'connecting';
+    healthStatus.message = 'Database connection in progress';
+  } else if (dbReadyState === 1) {
+    healthStatus.status = 'healthy';
+    healthStatus.message = 'All systems operational';
+  } else if (dbReadyState === 3) {
+    healthStatus.status = 'disconnecting';
+    healthStatus.message = 'Database disconnecting';
+  }
+
+  res.json(healthStatus);
+});
+
+// Helper function to translate MongoDB readyState
+function getMongoDBStateText(readyState) {
+  const states = {
+    0: 'disconnected',
+    1: 'connected', 
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  return states[readyState] || 'unknown';
+}
+
+// ==================== FIXED AUTHENTICATION ROUTES ====================
+
+app.post('/api/auth/request-code', async (req, res) => {
   try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod,
-      status
-    } = filters;
+    // Check if server is initialized
+    if (!serverStatus.isInitialized) {
+      return res.status(503).json({
+        success: false,
+        message: 'Server is initializing. Please try again in a moment.',
+        code: 'SERVER_INITIALIZING'
+      });
+    }
 
-    console.log('📊 Fetching enhanced transaction data with filters:', filters);
+    const { email } = req.body;
 
-    // FIX: Include both completed AND credit transactions
-    let filter = { 
-      status: { $in: ['completed', 'credit'] } // Include both statuses
-    };
-    // Date filter
-    if (startDate && endDate) {
-      filter.saleDate = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
+    // Validate email presence
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is required',
+        code: 'EMAIL_REQUIRED'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address',
+        code: 'INVALID_EMAIL'
+      });
+    }
+
+    console.log('📧 Secure code request for:', email);
+
+    // Find user - check both User and Cashier models
+    let user = null;
+    try {
+      user = await models.User.findOne({ email: email.toLowerCase().trim() }) || 
+             await models.Cashier.findOne({ email: email.toLowerCase().trim() });
+    } catch (dbError) {
+      console.error('❌ Database error during user lookup:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Database error. Please try again.',
+        code: 'DATABASE_ERROR'
+      });
+    }
+
+    if (!user) {
+      console.log('❌ No user found for email:', email);
+      return res.status(404).json({
+        success: false,
+        message: 'No account found with this email address',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    // Check if user is active
+    if (user.status && user.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is not active. Please contact administrator.',
+        code: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Generate secure code
+    const secureCode = generateSecureCode();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+    const hashedCode = await bcrypt.hash(secureCode, 10);
+    
+    // Save secure code
+    try {
+      await models.SecureCode.findOneAndUpdate(
+        { email: email.toLowerCase().trim() },
+        {
+          code: hashedCode,
+          expiresAt,
+          attempts: 0,
+          used: false
+        },
+        { 
+          upsert: true, 
+          new: true,
+          runValidators: true 
+        }
+      );
+    } catch (dbError) {
+      console.error('❌ Database error saving secure code:', dbError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate secure code. Please try again.',
+        code: 'CODE_SAVE_ERROR'
+      });
+    }
+
+    // Send email
+    const emailResult = await sendSecureCodeEmail(email, secureCode);
+
+    if (emailResult.success) {
+      console.log('✅ Secure code sent successfully to:', email);
+      
+      res.json({
+        success: true,
+        message: 'Secure code sent to your email',
+        expiresIn: 15,
+        code: 'CODE_SENT'
+      });
+    } else {
+      console.log('📧 Email service unavailable, returning code in development mode');
+      
+      res.json({
+        success: true,
+        message: 'Secure code generated (email service unavailable)',
+        developmentMode: true,
+        secureCode: secureCode,
+        expiresIn: 15,
+        code: 'DEVELOPMENT_MODE'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Unexpected error in request-code endpoint:', error);
+    
+    let errorMessage = 'Failed to process request. Please try again later.';
+    let errorCode = 'UNKNOWN_ERROR';
+    
+    if (error.name === 'MongoNetworkError') {
+      errorMessage = 'Database connection error. Please try again.';
+      errorCode = 'DATABASE_CONNECTION_ERROR';
+    } else if (error.name === 'ValidationError') {
+      errorMessage = 'Data validation error. Please check your input.';
+      errorCode = 'VALIDATION_ERROR';
+    }
+
+    res.status(500).json({
+      success: false,
+      message: errorMessage,
+      code: errorCode,
+      ...(process.env.NODE_ENV === 'development' && {
+        error: error.message
+      })
+    });
+  }
+});
+
+// Verify secure login code
+app.post('/api/auth/verify-code',
+  [
+    body('email').isEmail().normalizeEmail(),
+    body('code').isLength({ min: 6, max: 6 }).isNumeric()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid input data',
+          details: errors.array()
+        });
+      }
+
+      const { email, code } = req.body;
+      console.log('🔐 Secure code verification for:', email);
+
+      // Check if server is initialized
+      if (!serverStatus.isInitialized) {
+        return res.status(503).json({
+          success: false,
+          message: 'Server is initializing. Please try again in a moment.',
+          code: 'SERVER_INITIALIZING'
+        });
+      }
+
+      // Find the secure code
+      const secureCode = await models.SecureCode.findOne({ email });
+      if (!secureCode) {
+        return res.status(404).json({
+          success: false,
+          message: 'No secure code found for this email. Please request a new code.'
+        });
+      }
+
+      // Check if code is expired
+      if (new Date() > secureCode.expiresAt) {
+        await models.SecureCode.deleteOne({ email });
+        return res.status(400).json({
+          success: false,
+          message: 'Secure code has expired. Please request a new code.'
+        });
+      }
+
+      // Check if code is already used
+      if (secureCode.used) {
+        return res.status(400).json({
+          success: false,
+          message: 'Secure code has already been used. Please request a new code.'
+        });
+      }
+
+      // Check attempts
+      if (secureCode.attempts >= 5) {
+        await models.SecureCode.deleteOne({ email });
+        return res.status(400).json({
+          success: false,
+          message: 'Too many failed attempts. Please request a new code.'
+        });
+      }
+
+      // Verify code
+      const isValidCode = await bcrypt.compare(code, secureCode.code);
+      if (!isValidCode) {
+        secureCode.attempts += 1;
+        await secureCode.save();
+        
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid secure code',
+          attemptsRemaining: 5 - secureCode.attempts
+        });
+      }
+
+      // Code is valid - mark as used
+      secureCode.used = true;
+      await secureCode.save();
+
+      // Find user
+      const user = await models.User.findOne({ email }) || 
+                   await models.Cashier.findOne({ email });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User account not found'
+        });
+      }
+
+      // Update last login
+      user.lastLogin = new Date();
+      await user.save();
+
+      // Generate token
+      const token = generateAuthToken(user._id, user.email, user.role);
+
+      const userData = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        lastLogin: user.lastLogin
       };
+
+      // Add shop info for cashiers
+      if (user.role === 'cashier' && user.shopId) {
+        userData.shopId = user.shopId;
+        userData.shopName = user.shopName;
+      }
+
+      req.session.user = userData;
+      req.session.token = token;
+
+      console.log('✅ Secure code verification successful for:', email);
+
+      res.json({
+        success: true,
+        user: userData,
+        token: token,
+        message: 'Login successful'
+      });
+
+    } catch (error) {
+      console.error('❌ Error verifying secure code:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to verify code. Please try again.',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  }
+);
+
+// Cashier login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide email and password'
+      });
     }
 
-    // Shop filter
-    if (shopId && shopId !== 'all') {
-      filter.$or = [
-        { shop: shopId },
-        { shopId: shopId }
-      ];
+    // Check if server is initialized
+    if (!serverStatus.isInitialized) {
+      return res.status(503).json({
+        success: false,
+        message: 'Server is initializing. Please try again in a moment.',
+        code: 'SERVER_INITIALIZING'
+      });
     }
 
-    // Cashier filter
-    if (cashierId && cashierId !== 'all') {
-      filter.$or = [
-        { cashierId: cashierId },
-        { cashierName: { $regex: cashierId, $options: 'i' } }
-      ];
+    const cashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() })
+      .populate('shopId', 'name location');
+    
+    if (!cashier || cashier.status !== 'active') {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier account not found or inactive'
+      });
     }
 
-    // Payment method filter
-    if (paymentMethod && paymentMethod !== 'all') {
-      if (paymentMethod === 'digital') {
-        filter.paymentMethod = { $in: ['mpesa', 'bank', 'card'] };
-      } else if (paymentMethod === 'credit') {
-        filter.paymentMethod = 'credit';
+    let isPasswordValid = false;
+    if (cashier.password) {
+      if (cashier.password.startsWith('$2b$')) {
+        isPasswordValid = await bcrypt.compare(password, cashier.password);
       } else {
-        filter.paymentMethod = paymentMethod;
+        isPasswordValid = cashier.password === password;
       }
     }
 
-    // Fetch all data in parallel
-    const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
-      models.Transaction.find(filter)
-        .populate('shop', 'name location type')
-        .populate('cashierId', 'name email')
-        .populate('items.productId', 'name buyingPrice currentStock')
-        .sort({ saleDate: -1 })
-        .lean(),
-      models.Shop.find().lean(),
-      models.Cashier.find().lean(),
-      models.Product.find().lean(), // Ensure all products are fetched for cost calculation
-      models.Expense.find(startDate && endDate ? {
-        date: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}).populate('shop', 'name').lean(),
-      models.Credit.find(startDate && endDate ? {
-        createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}).populate('transactionId').populate('shop').populate('cashierId').lean()
-    ]);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid password'
+      });
+    }
 
-    console.log(`✅ Enhanced transaction data fetched: ${transactions.length} transactions, ${products.length} products, ${credits.length} credits`);
+    cashier.lastLogin = new Date();
+    await cashier.save();
 
-    // Process data using enhanced utility
-    const processedData = await CalculationUtils.processComprehensiveData({
-      transactions,
-      shops,
-      cashiers,
-      products, // Pass products for cost calculation
-      expenses,
-      credits
-    }, shopId);
+    const token = generateAuthToken(cashier._id, cashier.email, cashier.role);
 
-    return processedData;
+    const userData = {
+      _id: cashier._id,
+      name: cashier.name,
+      email: cashier.email,
+      phone: cashier.phone,
+      role: cashier.role,
+      status: cashier.status,
+      lastLogin: cashier.lastLogin,
+      shopId: cashier.shopId?._id || null,
+      shopName: cashier.shopId?.name || cashier.shopName || null
+    };
+
+    req.session.user = userData;
+    req.session.token = token;
+
+    res.json({
+      success: true,
+      user: userData,
+      token: token,
+      message: 'Cashier login successful'
+    });
 
   } catch (error) {
-    console.error('❌ Error in getAllTransactionData:', error);
-    throw error;
+    console.error('❌ Cashier login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during login. Please try again.'
+    });
   }
+});
+
+// ==================== BASIC CRUD ENDPOINTS WITH INITIALIZATION CHECKS ====================
+
+// Helper middleware to check initialization
+const checkInitialization = (req, res, next) => {
+  if (!serverStatus.isInitialized) {
+    return res.status(503).json({
+      success: false,
+      message: 'Server is initializing. Please try again in a moment.',
+      code: 'SERVER_INITIALIZING'
+    });
+  }
+  next();
 };
 
-// ==================== ENHANCED CREDIT SALE WITH COMPLETE UPFRONT PAYMENT SUPPORT ====================
+// Products API
+app.get('/api/products', checkInitialization, async (req, res) => {
+  try {
+    const products = await models.Product.find()
+      .populate('shop', 'name location type')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: products,
+      count: products.length
+    });
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch products',
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/products', checkInitialization, async (req, res) => {
+  try {
+    const productData = req.body;
+    
+    // Auto-populate shop information if shop ID is provided
+    if (productData.shop) {
+      const shop = await models.Shop.findById(productData.shop);
+      if (shop) {
+        productData.shopName = shop.name;
+        productData.shopId = shop._id;
+      }
+    }
+
+    const product = new models.Product(productData);
+    await product.save();
+    
+    await product.populate('shop', 'name location type');
+    
+    res.status(201).json({
+      success: true,
+      data: product,
+      message: 'Product created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating product:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create product',
+      error: error.message
+    });
+  }
+});
+
+// Shops API
+app.get('/api/shops', checkInitialization, async (req, res) => {
+  try {
+    const shops = await models.Shop.find().sort({ createdAt: -1 });
+    res.json({
+      success: true,
+      data: shops,
+      count: shops.length
+    });
+  } catch (error) {
+    console.error('Error fetching shops:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch shops',
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/shops', checkInitialization, async (req, res) => {
+  try {
+    const shopData = req.body;
+
+    const shop = new models.Shop(shopData);
+    await shop.save();
+    
+    res.status(201).json({
+      success: true,
+      data: shop,
+      message: 'Shop created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating shop:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create shop',
+      error: error.message
+    });
+  }
+});
+
+// Cashiers API
+app.get('/api/cashiers', checkInitialization, async (req, res) => {
+  try {
+    const cashiers = await models.Cashier.find()
+      .populate('shopId', 'name location')
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      data: cashiers,
+      count: cashiers.length
+    });
+  } catch (error) {
+    console.error('Error fetching cashiers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch cashiers',
+      error: error.message
+    });
+  }
+});
+
+// Expenses API
+app.get('/api/expenses', checkInitialization, async (req, res) => {
+  try {
+    const expenses = await models.Expense.find()
+      .populate('shop', 'name location')
+      .sort({ date: -1 });
+    
+    res.json({
+      success: true,
+      data: expenses,
+      count: expenses.length
+    });
+  } catch (error) {
+    console.error('Error fetching expenses:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch expenses',
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/expenses', checkInitialization, async (req, res) => {
+  try {
+    const expenseData = req.body;
+    
+    console.log('💰 Creating expense:', {
+      category: expenseData.category,
+      amount: expenseData.amount,
+      description: expenseData.description,
+      paymentMethod: expenseData.paymentMethod
+    });
+
+    // Auto-populate shop information if shop ID is provided
+    if (expenseData.shop) {
+      const shop = await models.Shop.findById(expenseData.shop);
+      if (shop) {
+        expenseData.shopName = shop.name;
+        expenseData.shopId = shop._id;
+      }
+    }
+
+    // Set default values if not provided
+    if (!expenseData.date) {
+      expenseData.date = new Date();
+    }
+    if (!expenseData.category) {
+      expenseData.category = 'General';
+    }
+    if (!expenseData.paymentMethod) {
+      expenseData.paymentMethod = 'cash';
+    }
+    if (!expenseData.status) {
+      expenseData.status = 'completed';
+    }
+
+    // Validate required fields
+    if (!expenseData.description || !expenseData.amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Description and amount are required fields'
+      });
+    }
+
+    const expense = new models.Expense(expenseData);
+    await expense.save();
+    
+    await expense.populate('shop', 'name location');
+
+    console.log('✅ Expense created successfully:', {
+      expenseId: expense._id,
+      amount: expense.amount,
+      category: expense.category,
+      description: expense.description
+    });
+
+    res.status(201).json({
+      success: true,
+      data: expense,
+      message: 'Expense created successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error creating expense:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create expense',
+      error: error.message
+    });
+  }
+});
+
+// ==================== TRANSACTION ENDPOINTS ====================
 
 // ENHANCED TRANSACTION CREATION WITH COMPLETE UPFRONT CREDIT SUPPORT
-app.post('/api/transactions', async (req, res) => {
+app.post('/api/transactions', checkInitialization, async (req, res) => {
   try {
     const transactionData = req.body;
     
@@ -1699,1895 +2243,7 @@ async function handleCreditPayment(transactionData, res) {
   }
 }
 
-// ==================== COMPLETE API ENDPOINTS ====================
-
-app.get('/api/health', async (req, res) => {
-  const dbReadyState = mongoose.connection.readyState;
-  const dbStatus = dbReadyState === 1 ? 'connected' : 'disconnected';
-  const emailStatus = emailTransporter ? 'configured' : 'disabled';
-  
-  // Enhanced status checking with real-time MongoDB state
-  const healthStatus = {
-    success: true,
-    status: dbStatus === 'connected' ? 'healthy' : 'degraded',
-    timestamp: new Date().toISOString(),
-    app: 'Stanzo Shop Management',
-    version: '1.0.0',
-    database: dbStatus,
-    email: emailStatus,
-    authentication: 'email-based-secure-code',
-    cogsCalculation: 'complete_sales_plus_credit_sales_made',
-    creditPartialPayment: 'supported',
-    immediateRevenueTracking: 'enabled',
-    upfrontCreditSupport: 'fully_enabled',
-    creditDisplayLogic: 'balance_due_only',
-    
-    // Add initialization status
-    initialization: {
-      isInitialized: serverStatus.isInitialized,
-      isInitializing: serverStatus.isInitializing,
-      services: serverStatus.services
-    },
-    
-    // Add detailed connection information
-    connection: {
-      mongodb: {
-        readyState: dbReadyState,
-        readyStateText: getMongoDBStateText(dbReadyState),
-        host: process.env.MONGODB_URI ? new URL(process.env.MONGODB_URI).hostname : 'not configured'
-      }
-    }
-  };
-
-  // Status messages based on actual state
-  if (dbReadyState === 0) {
-    healthStatus.status = 'disconnected';
-    healthStatus.message = 'Database disconnected - check MONGODB_URI and network connection';
-  } else if (dbReadyState === 2) {
-    healthStatus.status = 'connecting';
-    healthStatus.message = 'Database connection in progress';
-  } else if (dbReadyState === 1) {
-    healthStatus.status = 'healthy';
-    healthStatus.message = 'All systems operational';
-  } else if (dbReadyState === 3) {
-    healthStatus.status = 'disconnecting';
-    healthStatus.message = 'Database disconnecting';
-  }
-
-  res.json(healthStatus);
-});
-
-// Helper function to translate MongoDB readyState
-function getMongoDBStateText(readyState) {
-  const states = {
-    0: 'disconnected',
-    1: 'connected', 
-    2: 'connecting',
-    3: 'disconnecting'
-  };
-  return states[readyState] || 'unknown';
-}
-
-app.get('/api/debug/connection', async (req, res) => {
-  try {
-    // Test actual database operation
-    const testResult = await models.Shop.findOne().lean();
-    
-    res.json({
-      success: true,
-      mongooseState: mongoose.connection.readyState,
-      mongooseStateText: getMongoDBStateText(mongoose.connection.readyState),
-      databaseName: mongoose.connection.name,
-      host: mongoose.connection.host,
-      port: mongoose.connection.port,
-      testQuery: testResult ? 'success' : 'no data',
-      modelsInitialized: !!models.Shop,
-      serverStatus: serverStatus
-    });
-  } catch (error) {
-    res.json({
-      success: false,
-      mongooseState: mongoose.connection.readyState,
-      error: error.message,
-      modelsInitialized: !!models.Shop,
-      serverStatus: serverStatus
-    });
-  }
-});
-
-// Vercel-compatible health check
-app.get('/api/vercel-debug', (req, res) => {
-  res.json({
-    vercel: process.env.VERCEL,
-    vercelRegion: process.env.VERCEL_REGION,
-    vercelEnv: process.env.VERCEL_ENV,
-    nodeEnv: process.env.NODE_ENV,
-    mongodbUri: process.env.MONGODB_URI ? 'set' : 'not set',
-    mongooseState: mongoose.connection.readyState,
-    allEnvVars: Object.keys(process.env).filter(key => 
-      key.includes('VERCEL') || 
-      key.includes('MONGODB') || 
-      key.includes('EMAIL')
-    )
-  });
-});
-
-// ==================== AUTHENTICATION ROUTES ====================
-app.post('/api/auth/request-code', async (req, res) => {
-  try {
-    // Enhanced server initialization check
-    if (!models || !models.User || !models.SecureCode || !models.Cashier) {
-      console.error('❌ Server models not initialized');
-      return res.status(503).json({
-        success: false,
-        message: 'Server is initializing. Please try again in a moment.',
-        code: 'SERVER_INITIALIZING'
-      });
-    }
-
-    const { email } = req.body;
-
-    // Validate email presence
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email address is required',
-        code: 'EMAIL_REQUIRED'
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide a valid email address',
-        code: 'INVALID_EMAIL'
-      });
-    }
-
-    console.log('📧 Secure code request for:', email);
-
-    // Enhanced user lookup with better error handling
-    let user = null;
-    try {
-      user = await models.User.findOne({ email: email.toLowerCase().trim() }) || 
-             await models.Cashier.findOne({ email: email.toLowerCase().trim() });
-    } catch (dbError) {
-      console.error('❌ Database error during user lookup:', dbError);
-      return res.status(500).json({
-        success: false,
-        message: 'Database error. Please try again.',
-        code: 'DATABASE_ERROR'
-      });
-    }
-
-    if (!user) {
-      console.log('❌ No user found for email:', email);
-      return res.status(404).json({
-        success: false,
-        message: 'No account found with this email address',
-        code: 'USER_NOT_FOUND'
-      });
-    }
-
-    // Check if user is active
-    if (user.status && user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: 'Your account is not active. Please contact administrator.',
-        code: 'ACCOUNT_INACTIVE'
-      });
-    }
-
-    // Generate secure code
-    const secureCode = generateSecureCode();
-    const expiresAt = new Date();
-    expiresAt.setMinutes(expiresAt.getMinutes() + 15);
-
-    const hashedCode = await bcrypt.hash(secureCode, 10);
-    
-    // Save secure code with enhanced error handling
-    try {
-      await models.SecureCode.findOneAndUpdate(
-        { email: email.toLowerCase().trim() },
-        {
-          code: hashedCode,
-          expiresAt,
-          attempts: 0,
-          used: false
-        },
-        { 
-          upsert: true, 
-          new: true,
-          runValidators: true 
-        }
-      );
-    } catch (dbError) {
-      console.error('❌ Database error saving secure code:', dbError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to generate secure code. Please try again.',
-        code: 'CODE_SAVE_ERROR'
-      });
-    }
-
-    // Handle email service availability
-    if (!emailTransporter) {
-      console.log('📧 Email service disabled - returning code in development mode');
-      return res.json({
-        success: true,
-        message: 'Secure code generated (email service disabled)',
-        developmentMode: true,
-        secureCode: secureCode,
-        expiresIn: 15,
-        code: 'DEVELOPMENT_MODE'
-      });
-    }
-
-    // Send email with enhanced error handling
-    try {
-      await sendSecureCodeEmail(email, secureCode);
-      console.log('✅ Secure code sent successfully to:', email);
-      
-      res.json({
-        success: true,
-        message: 'Secure code sent to your email',
-        expiresIn: 15,
-        code: 'CODE_SENT'
-      });
-    } catch (emailError) {
-      console.error('❌ Failed to send email:', emailError);
-      
-      // Clean up the secure code since email failed
-      try {
-        await models.SecureCode.deleteOne({ email: email.toLowerCase().trim() });
-      } catch (cleanupError) {
-        console.error('❌ Failed to cleanup secure code after email failure:', cleanupError);
-      }
-
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send secure code. Please try again later.',
-        code: 'EMAIL_SEND_FAILED'
-      });
-    }
-
-  } catch (error) {
-    console.error('❌ Unexpected error in request-code endpoint:', error);
-    
-    // Provide more specific error messages based on error type
-    let errorMessage = 'Failed to process request. Please try again later.';
-    let errorCode = 'UNKNOWN_ERROR';
-    
-    if (error.name === 'MongoNetworkError') {
-      errorMessage = 'Database connection error. Please try again.';
-      errorCode = 'DATABASE_CONNECTION_ERROR';
-    } else if (error.name === 'ValidationError') {
-      errorMessage = 'Data validation error. Please check your input.';
-      errorCode = 'VALIDATION_ERROR';
-    }
-
-    res.status(500).json({
-      success: false,
-      message: errorMessage,
-      code: errorCode,
-      // Only include error details in development
-      ...(process.env.NODE_ENV === 'development' && {
-        error: error.message,
-        stack: error.stack
-      })
-    });
-  }
-});
-
-// Verify secure login code
-app.post('/api/auth/verify-code',
-  [
-    body('email').isEmail().normalizeEmail(),
-    body('code').isLength({ min: 6, max: 6 }).isNumeric()
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid input data',
-          details: errors.array()
-        });
-      }
-
-      const { email, code } = req.body;
-      console.log('🔐 Secure code verification for:', email);
-
-      // Find the secure code
-      const secureCode = await models.SecureCode.findOne({ email });
-      if (!secureCode) {
-        return res.status(404).json({
-          success: false,
-          message: 'No secure code found for this email. Please request a new code.'
-        });
-      }
-
-      // Check if code is expired
-      if (new Date() > secureCode.expiresAt) {
-        await models.SecureCode.deleteOne({ email });
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has expired. Please request a new code.'
-        });
-      }
-
-      // Check if code is already used
-      if (secureCode.used) {
-        return res.status(400).json({
-          success: false,
-          message: 'Secure code has already been used. Please request a new code.'
-        });
-      }
-
-      // Check attempts
-      if (secureCode.attempts >= 5) {
-        await models.SecureCode.deleteOne({ email });
-        return res.status(400).json({
-          success: false,
-          message: 'Too many failed attempts. Please request a new code.'
-        });
-      }
-
-      // Verify code
-      const isValidCode = await bcrypt.compare(code, secureCode.code);
-      if (!isValidCode) {
-        secureCode.attempts += 1;
-        await secureCode.save();
-        
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid secure code',
-          attemptsRemaining: 5 - secureCode.attempts
-        });
-      }
-
-      // Code is valid - mark as used
-      secureCode.used = true;
-      await secureCode.save();
-
-      // Find user
-      const user = await models.User.findOne({ email }) || 
-                   await models.Cashier.findOne({ email });
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'User account not found'
-        });
-      }
-
-      // Update last login
-      user.lastLogin = new Date();
-      await user.save();
-
-      // Generate token
-      const token = generateAuthToken(user._id, user.email, user.role);
-
-      const userData = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        lastLogin: user.lastLogin
-      };
-
-      // Add shop info for cashiers
-      if (user.role === 'cashier' && user.shopId) {
-        userData.shopId = user.shopId;
-        userData.shopName = user.shopName;
-      }
-
-      req.session.user = userData;
-      req.session.token = token;
-
-      console.log('✅ Secure code verification successful for:', email);
-
-      res.json({
-        success: true,
-        user: userData,
-        token: token,
-        message: 'Login successful'
-      });
-
-    } catch (error) {
-      console.error('❌ Error verifying secure code:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to verify code. Please try again.',
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
-      });
-    }
-  }
-);
-
-// Cashier login
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password'
-      });
-    }
-
-    const cashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() })
-      .populate('shopId', 'name location');
-    
-    if (!cashier || cashier.status !== 'active') {
-      return res.status(404).json({
-        success: false,
-        message: 'Cashier account not found or inactive'
-      });
-    }
-
-    let isPasswordValid = false;
-    if (cashier.password) {
-      if (cashier.password.startsWith('$2b$')) {
-        isPasswordValid = await bcrypt.compare(password, cashier.password);
-      } else {
-        isPasswordValid = cashier.password === password;
-      }
-    }
-
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid password'
-      });
-    }
-
-    cashier.lastLogin = new Date();
-    await cashier.save();
-
-    const token = generateAuthToken(cashier._id, cashier.email, cashier.role);
-
-    const userData = {
-      _id: cashier._id,
-      name: cashier.name,
-      email: cashier.email,
-      phone: cashier.phone,
-      role: cashier.role,
-      status: cashier.status,
-      lastLogin: cashier.lastLogin,
-      shopId: cashier.shopId?._id || null,
-      shopName: cashier.shopId?.name || cashier.shopName || null
-    };
-
-    req.session.user = userData;
-    req.session.token = token;
-
-    res.json({
-      success: true,
-      user: userData,
-      token: token,
-      message: 'Cashier login successful'
-    });
-
-  } catch (error) {
-    console.error('❌ Cashier login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error during login. Please try again.'
-    });
-  }
-});
-
-// Add this to your server code for debugging
-app.post('/api/debug/credit-transaction', async (req, res) => {
-  try {
-    const transactionData = req.body;
-    
-    console.log('🔍 DEBUG - Transaction data received:', {
-      paymentMethod: transactionData.paymentMethod,
-      totalAmount: transactionData.totalAmount,
-      amountPaidNow: transactionData.amountPaidNow,
-      upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
-      upfrontPaymentSplit: transactionData.upfrontPaymentSplit,
-      isCreditTransaction: transactionData.paymentMethod === 'credit'
-    });
-
-    // Simulate what should happen
-    const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
-    const totalAmount = CalculationUtils.safeNumber(transactionData.totalAmount);
-    const balanceDue = Math.max(0, totalAmount - amountPaidNow);
-
-    console.log('🔍 DEBUG - Expected credit record:', {
-      totalAmount,
-      amountPaid: amountPaidNow,
-      balanceDue, // This should be the remaining balance only
-      upfrontPayment: {
-        amount: amountPaidNow,
-        method: transactionData.upfrontPaymentMethod,
-        split: transactionData.upfrontPaymentSplit
-      }
-    });
-
-    res.json({
-      success: true,
-      debug: {
-        received: {
-          amountPaidNow: transactionData.amountPaidNow,
-          upfrontPaymentMethod: transactionData.upfrontPaymentMethod,
-          upfrontPaymentSplit: transactionData.upfrontPaymentSplit
-        },
-        expected: {
-          totalAmount,
-          amountPaid: amountPaidNow,
-          balanceDue,
-          upfrontPayment: {
-            amount: amountPaidNow,
-            method: transactionData.upfrontPaymentMethod,
-            split: transactionData.upfrontPaymentSplit
-          }
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('Debug error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Debug failed',
-      error: error.message
-    });
-  }
-});
-
-// ==================== COMBINED TRANSACTION ENDPOINTS ====================
-
-app.get('/api/transactions/combined', async (req, res) => {
-  try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod,
-      dataType = 'all'
-    } = req.query;
-
-    console.log('🚀 Processing enhanced combined transaction endpoint...', req.query);
-
-    const startTime = Date.now();
-    
-    const filters = {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      paymentMethod
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-    const processingTime = Date.now() - startTime;
-
-    console.log(`✅ Enhanced combined transaction data generated in ${processingTime}ms`);
-
-    let responseData = {
-      success: true,
-      data: transactionData,
-      processingTime,
-      message: 'Combined transaction data fetched successfully',
-      cogsMethodology: 'complete_sales_plus_credit_sales_made',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    };
-
-    if (dataType !== 'all') {
-      switch (dataType) {
-        case 'basic':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.summary
-          };
-          break;
-        case 'enhanced':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.financialStats,
-            credits: transactionData.credits
-          };
-          break;
-        case 'sales':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            summary: transactionData.summary,
-            performance: transactionData.performance
-          };
-          break;
-        case 'withCredits':
-          responseData.data = {
-            transactions: transactionData.salesWithProfit,
-            credits: transactionData.credits,
-            summary: {
-              ...transactionData.summary,
-              creditSummary: {
-                totalCredits: transactionData.credits.length,
-                totalCreditAmount: transactionData.summary.totalCreditGiven,
-                outstandingCredit: transactionData.summary.outstandingCredit,
-                recognizedCreditRevenue: transactionData.summary.recognizedCreditRevenue,
-                totalUpfrontPayments: transactionData.summary.totalUpfrontPayments // NEW: Include upfront payments
-              }
-            }
-          };
-          break;
-        case 'optimized':
-          responseData.data = {
-            comprehensiveReport: transactionData.comprehensiveReport,
-            salesSummary: {
-              financialStats: transactionData.financialStats,
-              topProducts: transactionData.performance.topProducts,
-              topCashiers: transactionData.performance.topCashiers
-            },
-            enhancedStats: transactionData.enhancedStats,
-            filteredTransactions: transactionData.salesWithProfit
-          };
-          break;
-        case 'metrics-only':
-          responseData.data = {
-            metrics: transactionData.financialStats,
-            period: {
-              startDate: startDate || 'All time',
-              endDate: endDate || 'All time'
-            }
-          };
-          break;
-      }
-    }
-
-    res.json(responseData);
-
-  } catch (error) {
-    console.error('❌ Error in enhanced combined transaction endpoint:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch combined transaction data',
-      error: error.message,
-      processingTime: 0
-    });
-  }
-});
-
-// SPECIFIC METRICS ENDPOINT - Returns exactly the 12 metrics shown in the image with upfront credit support
-app.get('/api/transactions/metrics', async (req, res) => {
-  try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId
-    } = req.query;
-
-    console.log('📈 Fetching specific transaction metrics with upfront credit support...', req.query);
-
-    const filters = {
-      startDate,
-      endDate,
-      shopId,
-      cashierId
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-
-    // Extract exactly the 12 metrics shown in the image with upfront credit support
-    const metrics = {
-      // 1. Total Sales
-      totalSales: {
-        amount: transactionData.financialStats.totalRevenue,
-        count: transactionData.financialStats.totalSales,
-        description: `${transactionData.financialStats.totalSales} transactions`
-      },
-      
-      // 2. Credit Sales
-      creditSales: {
-        amount: transactionData.financialStats.creditSales,
-        count: transactionData.financialStats.creditSalesCount,
-        description: `${transactionData.financialStats.creditSalesCount} credit transactions`
-      },
-      
-      // 3. Non-Credit Sales
-      nonCreditSales: {
-        amount: transactionData.financialStats.nonCreditSales,
-        count: transactionData.financialStats.nonCreditSalesCount,
-        description: `${transactionData.financialStats.nonCreditSalesCount} complete transaction/skell immediately`
-      },
-      
-      // 4. Total Revenue
-      totalRevenue: {
-        amount: transactionData.financialStats.totalRevenue,
-        description: 'From credit & non-credit sales (includes upfront payments)'
-      },
-      
-      // 5. Expenses
-      expenses: {
-        amount: transactionData.financialStats.totalExpenses,
-        description: 'Total operational costs'
-      },
-      
-      // 6. Gross Profit
-      grossProfit: {
-        amount: transactionData.financialStats.grossProfit,
-        description: 'Revenue - Cost of Goods'
-      },
-      
-      // 7. Net Profit
-      netProfit: {
-        amount: transactionData.financialStats.netProfit,
-        description: 'After all expenses'
-      },
-      
-      // 8. Cost of Goods Sold
-      costOfGoodsSold: {
-        amount: transactionData.financialStats.costOfGoodsSold,
-        description: 'For credit & non-credit sales'
-      },
-      
-      // 9. Total Mpesa/Bank
-      totalMpesaBank: {
-        amount: transactionData.financialStats.totalMpesaBank,
-        description: 'Digital payments (includes upfront credit payments)'
-      },
-      
-      // 10. Total Cash
-      totalCash: {
-        amount: transactionData.financialStats.totalCash,
-        description: 'Cash payments (includes upfront credit payments)'
-      },
-      
-      // 11. Outstanding Credit
-      outstandingCredit: {
-        amount: transactionData.financialStats.outstandingCredit,
-        description: 'Unpaid credit balance only'
-      },
-      
-      // 12. Total Credit Given
-      totalCreditGiven: {
-        amount: transactionData.financialStats.totalCreditGiven,
-        description: 'Total credit extended'
-      },
-
-      // NEW: Upfront Payment Metrics
-      upfrontPayments: {
-        amount: transactionData.financialStats.totalUpfrontPayments,
-        description: 'Upfront payments on credit sales'
-      }
-    };
-
-    res.json({
-      success: true,
-      data: metrics,
-      period: {
-        startDate: startDate || 'All time',
-        endDate: endDate || 'All time'
-      },
-      message: 'Transaction metrics fetched successfully',
-      cogsCalculation: 'complete_sales_plus_credit_sales_made',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching transaction metrics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch transaction metrics',
-      error: error.message
-    });
-  }
-});
-
-// ENHANCED TRANSACTIONS WITH CREDIT DETAILS
-app.get('/api/transactions/with-credits', async (req, res) => {
-  try {
-    const {
-      startDate,
-      endDate,
-      shopId,
-      cashierId,
-      includeCreditDetails = 'true'
-    } = req.query;
-
-    const filters = {
-      startDate,
-      endDate,
-      shopId,
-      cashierId
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-
-    // Enhance transactions with credit information
-    const transactionsWithCredits = transactionData.salesWithProfit.map(transaction => {
-      const creditInfo = transactionData.credits.find(credit => 
-        credit.transactionId && credit.transactionId._id && 
-        credit.transactionId._id.toString() === transaction._id.toString()
-      );
-
-      return {
-        ...transaction,
-        creditDetails: creditInfo ? {
-          creditId: creditInfo._id,
-          customerName: creditInfo.customerName,
-          customerPhone: creditInfo.customerPhone,
-          totalAmount: creditInfo.totalAmount,
-          amountPaid: creditInfo.amountPaid,
-          balanceDue: creditInfo.balanceDue, // This now shows only the remaining balance
-          dueDate: creditInfo.dueDate,
-          status: creditInfo.status,
-          paymentHistory: creditInfo.paymentHistory,
-          shopClassification: creditInfo.shopClassification,
-          upfrontPayment: creditInfo.upfrontPayment // NEW: Include upfront payment details
-        } : null
-      };
-    });
-
-    res.json({
-      success: true,
-      data: {
-        transactions: transactionsWithCredits,
-        summary: transactionData.financialStats,
-        credits: includeCreditDetails === 'true' ? transactionData.credits : [],
-        metrics: transactionData.financialStats
-      },
-      message: 'Transactions with credit details fetched successfully',
-      cogsMethodology: 'complete_sales_plus_credit_sales_made',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching transactions with credits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch transactions with credit details',
-      error: error.message
-    });
-  }
-});
-
-// ==================== CASHIER-SPECIFIC ENDPOINTS ====================
-
-// Enhanced cashier dashboard metrics endpoint with upfront credit support
-app.get('/api/cashier/dashboard-metrics', async (req, res) => {
-  try {
-    const { cashierId, shopId, startDate, endDate } = req.query;
-
-    if (!cashierId || !shopId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cashier ID and Shop ID are required'
-      });
-    }
-
-    console.log('📊 Fetching cashier-specific dashboard metrics with upfront credit support...', {
-      cashierId,
-      shopId,
-      startDate,
-      endDate
-    });
-
-    const filters = {
-      cashierId,
-      shopId,
-      startDate: startDate || new Date().toISOString().split('T')[0],
-      endDate: endDate || new Date().toISOString()
-    };
-
-    const transactionData = await getAllTransactionData(filters);
-    const financialStats = transactionData.financialStats;
-
-    // Enhanced cashier-specific metrics with upfront credit support
-    const cashierMetrics = {
-      // Core metrics for cashier dashboard
-      totalSales: financialStats.totalRevenue,
-      totalTransactions: financialStats.totalSales,
-      creditSales: financialStats.creditSales,
-      nonCreditSales: financialStats.nonCreditSales,
-      totalCash: financialStats.totalCash,
-      totalMpesaBank: financialStats.totalMpesaBank,
-      totalCredit: financialStats.totalCredit,
-      outstandingCredit: financialStats.outstandingCredit,
-      
-      // NEW: Upfront payment metrics
-      totalUpfrontPayments: financialStats.totalUpfrontPayments,
-      totalUpfrontCash: financialStats.totalUpfrontCash,
-      totalUpfrontMpesaBank: financialStats.totalUpfrontMpesaBank,
-      
-      // Performance metrics
-      itemsSold: financialStats.totalItemsSold,
-      averageTransaction: financialStats.averageTransactionValue,
-      profitMargin: financialStats.profitMargin,
-      
-      // Credit performance
-      creditTransactions: financialStats.creditSalesCount,
-      creditCollectionRate: financialStats.creditCollectionRate,
-      recognizedCreditRevenue: financialStats.recognizedCreditRevenue,
-      
-      // Immediate revenue tracking
-      immediateRevenue: financialStats.totalRevenue, // This includes all recognized revenue
-      creditImmediateRevenue: financialStats.recognizedCreditRevenue, // Credit portion of immediate revenue
-      
-      // Metadata
-      period: {
-        startDate: filters.startDate,
-        endDate: filters.endDate
-      },
-      cashierId,
-      shopId,
-      upfrontCreditSupport: true // NEW: Indicate support
-    };
-
-    res.json({
-      success: true,
-      data: cashierMetrics,
-      message: 'Cashier dashboard metrics fetched successfully',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching cashier dashboard metrics:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch cashier dashboard metrics',
-      error: error.message
-    });
-  }
-});
-
-// ==================== BASIC CRUD ENDPOINTS ====================
-
-// Products API
-app.get('/api/products', async (req, res) => {
-  try {
-    const products = await models.Product.find()
-      .populate('shop', 'name location type')
-      .sort({ createdAt: -1 });
-    
-    res.json({
-      success: true,
-      data: products,
-      count: products.length
-    });
-  } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch products',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/products', async (req, res) => {
-  try {
-    const productData = req.body;
-    
-    // Auto-populate shop information if shop ID is provided
-    if (productData.shop) {
-      const shop = await models.Shop.findById(productData.shop);
-      if (shop) {
-        productData.shopName = shop.name;
-        productData.shopId = shop._id;
-      }
-    }
-
-    const product = new models.Product(productData);
-    await product.save();
-    
-    await product.populate('shop', 'name location type');
-    
-    res.status(201).json({
-      success: true,
-      data: product,
-      message: 'Product created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create product',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/products/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const product = await models.Product.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shop', 'name location type');
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: product,
-      message: 'Product updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update product',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/products/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const product = await models.Product.findByIdAndDelete(id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete product',
-      error: error.message
-    });
-  }
-});
-
-// Shops API
-app.get('/api/shops', async (req, res) => {
-  try {
-    const shops = await models.Shop.find().sort({ createdAt: -1 });
-    res.json({
-      success: true,
-      data: shops,
-      count: shops.length
-    });
-  } catch (error) {
-    console.error('Error fetching shops:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch shops',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/shops', async (req, res) => {
-  try {
-    const shopData = req.body;
-
-    const shop = new models.Shop(shopData);
-    await shop.save();
-    
-    res.status(201).json({
-      success: true,
-      data: shop,
-      message: 'Shop created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create shop',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/shops/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const shop = await models.Shop.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    );
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: shop,
-      message: 'Shop updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update shop',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/shops/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const shop = await models.Shop.findByIdAndDelete(id);
-
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Shop deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting shop:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete shop',
-      error: error.message
-    });
-  }
-});
-
-// Cashiers API
-app.get('/api/cashiers', async (req, res) => {
-  try {
-    const cashiers = await models.Cashier.find()
-      .populate('shopId', 'name location')
-      .sort({ createdAt: -1 });
-    
-    res.json({
-      success: true,
-      data: cashiers,
-      count: cashiers.length
-    });
-  } catch (error) {
-    console.error('Error fetching cashiers:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch cashiers',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/cashiers', async (req, res) => {
-  try {
-    const cashierData = req.body;
-
-    // Hash password if provided
-    if (cashierData.password) {
-      cashierData.password = await bcrypt.hash(cashierData.password, 10);
-    }
-
-    const cashier = new models.Cashier(cashierData);
-    await cashier.save();
-    
-    await cashier.populate('shopId', 'name location');
-    
-    res.status(201).json({
-      success: true,
-      data: cashier,
-      message: 'Cashier created successfully'
-    });
-  } catch (error) {
-    console.error('Error creating cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create cashier',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/cashiers/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    // Hash password if provided
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    }
-
-    const cashier = await models.Cashier.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shopId', 'name location');
-
-    if (!cashier) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cashier not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: cashier,
-      message: 'Cashier updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update cashier',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/cashiers/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const cashier = await models.Cashier.findByIdAndDelete(id);
-
-    if (!cashier) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cashier not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Cashier deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting cashier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete cashier',
-      error: error.message
-    });
-  }
-});
-
-// Expenses API
-app.get('/api/expenses', async (req, res) => {
-  try {
-    const expenses = await models.Expense.find()
-      .populate('shop', 'name location')
-      .sort({ date: -1 });
-    
-    res.json({
-      success: true,
-      data: expenses,
-      count: expenses.length
-    });
-  } catch (error) {
-    console.error('Error fetching expenses:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch expenses',
-      error: error.message
-    });
-  }
-});
-
-app.post('/api/expenses', async (req, res) => {
-  try {
-    const expenseData = req.body;
-    
-    console.log('💰 Creating expense:', {
-      category: expenseData.category,
-      amount: expenseData.amount,
-      description: expenseData.description,
-      paymentMethod: expenseData.paymentMethod
-    });
-
-    // Auto-populate shop information if shop ID is provided
-    if (expenseData.shop) {
-      const shop = await models.Shop.findById(expenseData.shop);
-      if (shop) {
-        expenseData.shopName = shop.name;
-        expenseData.shopId = shop._id;
-      }
-    }
-
-    // Set default values if not provided
-    if (!expenseData.date) {
-      expenseData.date = new Date();
-    }
-    if (!expenseData.category) {
-      expenseData.category = 'General';
-    }
-    if (!expenseData.paymentMethod) {
-      expenseData.paymentMethod = 'cash';
-    }
-    if (!expenseData.status) {
-      expenseData.status = 'completed';
-    }
-
-    // Validate required fields
-    if (!expenseData.description || !expenseData.amount) {
-      return res.status(400).json({
-        success: false,
-        message: 'Description and amount are required fields'
-      });
-    }
-
-    const expense = new models.Expense(expenseData);
-    await expense.save();
-    
-    await expense.populate('shop', 'name location');
-
-    console.log('✅ Expense created successfully:', {
-      expenseId: expense._id,
-      amount: expense.amount,
-      category: expense.category,
-      description: expense.description
-    });
-
-    res.status(201).json({
-      success: true,
-      data: expense,
-      message: 'Expense created successfully'
-    });
-  } catch (error) {
-    console.error('❌ Error creating expense:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create expense',
-      error: error.message
-    });
-  }
-});
-
-app.put('/api/expenses/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const expense = await models.Expense.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shop', 'name location');
-
-    if (!expense) {
-      return res.status(404).json({
-        success: false,
-        message: 'Expense not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: expense,
-      message: 'Expense updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating expense:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update expense',
-      error: error.message
-    });
-  }
-});
-
-app.delete('/api/expenses/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const expense = await models.Expense.findByIdAndDelete(id);
-
-    if (!expense) {
-      return res.status(404).json({
-        success: false,
-        message: 'Expense not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Expense deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting expense:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete expense',
-      error: error.message
-    });
-  }
-});
-
-// ==================== ENHANCED CREDIT API ENDPOINTS ====================
-
-// Create credit record - WITH DEDUPLICATION CHECK
-app.post('/api/credits', async (req, res) => {
-  try {
-    const creditData = req.body;
-    
-    console.log('💳 Creating credit record with deduplication check:', {
-      transactionId: creditData.transactionId,
-      customerName: creditData.customerName
-    });
-
-    // Check for duplicate credit record
-    if (creditData.transactionId) {
-      const existingCredit = await models.Credit.findOne({ 
-        transactionId: creditData.transactionId 
-      });
-      
-      if (existingCredit) {
-        console.log('⚠️ Credit record already exists for transaction:', creditData.transactionId);
-        return res.status(409).json({
-          success: false,
-          message: 'Credit record already exists for this transaction',
-          data: existingCredit
-        });
-      }
-    }
-
-    // Auto-populate shop and cashier information if not provided
-    if (creditData.transactionId) {
-      const transaction = await models.Transaction.findById(creditData.transactionId);
-      if (transaction) {
-        if (!creditData.shop) creditData.shop = transaction.shop;
-        if (!creditData.shopId) creditData.shopId = transaction.shopId;
-        if (!creditData.shopName) creditData.shopName = transaction.shopName;
-        if (!creditData.cashierId) creditData.cashierId = transaction.cashierId;
-        if (!creditData.cashierName) creditData.cashierName = transaction.cashierName;
-      }
-    }
-
-    // Set default values
-    if (!creditData.status) {
-      creditData.status = creditData.balanceDue > 0 ? 'pending' : 'paid';
-    }
-
-    if (!creditData.dueDate) {
-      creditData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days default
-    }
-
-    // Initialize payment history if partial payment
-    if (!creditData.paymentHistory && creditData.amountPaid > 0) {
-      creditData.paymentHistory = [{
-        amount: creditData.amountPaid,
-        paymentDate: new Date(),
-        paymentMethod: 'initial',
-        recordedBy: creditData.recordedBy || 'System',
-        cashierName: creditData.cashierName,
-        notes: 'Initial payment',
-        isUpfrontPayment: true // NEW: Mark as upfront payment
-      }];
-    }
-
-    const credit = new models.Credit(creditData);
-    await credit.save();
-    
-    await credit.populate('transactionId');
-    await credit.populate('shop', 'name location type');
-    await credit.populate('cashierId', 'name email');
-
-    console.log('✅ Credit record created successfully with no duplication:', {
-      creditId: credit._id,
-      customerName: credit.customerName,
-      totalAmount: credit.totalAmount,
-      balanceDue: credit.balanceDue, // This now shows only the remaining balance
-      status: credit.status,
-      upfrontPayment: credit.upfrontPayment // NEW: Log upfront payment details
-    });
-
-    res.status(201).json({
-      success: true,
-      data: credit,
-      message: 'Credit record created successfully'
-    });
-  } catch (error) {
-    console.error('❌ Error creating credit record:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create credit record',
-      error: error.message
-    });
-  }
-});
-
-// Enhanced Credits API
-app.get('/api/credits', async (req, res) => {
-  try {
-    const { shopId, status, cashierId, startDate, endDate, includeTransactions = 'false' } = req.query;
-    
-    let filter = {};
-    if (shopId && shopId !== 'all') {
-      filter.$or = [
-        { shop: shopId },
-        { shopId: shopId },
-        { creditShopId: shopId }
-      ];
-    }
-    if (status && status !== 'all') filter.status = status;
-    if (cashierId && cashierId !== 'all') {
-      filter.$or = [
-        { cashierId: cashierId },
-        { cashierName: { $regex: cashierId, $options: 'i' } }
-      ];
-    }
-    
-    if (startDate && endDate) {
-      filter.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    const credits = await models.Credit.find(filter)
-      .populate('transactionId')
-      .populate('shop', 'name location type')
-      .populate('cashierId', 'name email')
-      .sort({ dueDate: 1 });
-
-    // Include transaction details if requested
-    let enhancedCredits = credits;
-    if (includeTransactions === 'true') {
-      enhancedCredits = await Promise.all(credits.map(async (credit) => {
-        if (credit.transactionId) {
-          const transaction = await models.Transaction.findById(credit.transactionId)
-            .populate('shop', 'name location type')
-            .populate('cashierId', 'name email')
-            .populate('items.productId', 'name buyingPrice');
-          return {
-            ...credit.toObject(),
-            transactionDetails: transaction
-          };
-        }
-        return credit;
-      }));
-    }
-
-    res.json({
-      success: true,
-      data: enhancedCredits,
-      count: credits.length,
-      summary: {
-        totalCredits: credits.length,
-        totalCreditAmount: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.totalAmount), 0),
-        totalPaid: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.amountPaid), 0),
-        totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0), // This now shows only the remaining balance
-        totalUpfrontPayments: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.upfrontPayment?.amount || 0), 0), // NEW: Upfront payments
-        overdueCount: credits.filter(c => 
-          c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0
-        ).length
-      },
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-  } catch (error) {
-    console.error('Error fetching credits:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch credits',
-      error: error.message
-    });
-  }
-});
-
-// Update credit record
-app.put('/api/credits/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const credit = await models.Credit.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    )
-      .populate('transactionId')
-      .populate('shop', 'name location type')
-      .populate('cashierId', 'name email');
-
-    if (!credit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Credit record not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: credit,
-      message: 'Credit record updated successfully'
-    });
-  } catch (error) {
-    console.error('Error updating credit record:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update credit record',
-      error: error.message
-    });
-  }
-});
-
-// Delete credit record
-app.delete('/api/credits/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const credit = await models.Credit.findByIdAndDelete(id);
-
-    if (!credit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Credit record not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Credit record deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting credit record:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete credit record',
-      error: error.message
-    });
-  }
-});
-
-// Get credit by ID
-app.get('/api/credits/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { includeTransaction = 'false' } = req.query;
-
-    let credit = await models.Credit.findById(id)
-      .populate('shop', 'name location type')
-      .populate('cashierId', 'name email');
-
-    if (!credit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Credit record not found'
-      });
-    }
-
-    // Include transaction details if requested
-    if (includeTransaction === 'true' && credit.transactionId) {
-      const transaction = await models.Transaction.findById(credit.transactionId)
-        .populate('shop', 'name location type')
-        .populate('cashierId', 'name email')
-        .populate('items.productId', 'name buyingPrice');
-      
-      credit = credit.toObject();
-      credit.transactionDetails = transaction;
-    }
-
-    res.json({
-      success: true,
-      data: credit,
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-  } catch (error) {
-    console.error('Error fetching credit record:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch credit record',
-      error: error.message
-    });
-  }
-});
-
-// ENHANCED: Handle credit payment with proper state management
-app.patch('/api/credits/:id/payment', async (req, res) => {
-  try {
-    const { amount, paymentMethod, recordedBy, cashierName, notes } = req.body;
-    
-    if (!amount || !paymentMethod) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields: amount, paymentMethod'
-      });
-    }
-
-    const credit = await models.Credit.findById(req.params.id);
-    if (!credit) {
-      return res.status(404).json({
-        success: false,
-        message: 'Credit record not found'
-      });
-    }
-
-    const paymentAmount = CalculationUtils.safeNumber(amount);
-    const currentAmountPaid = CalculationUtils.safeNumber(credit.amountPaid);
-    const newAmountPaid = currentAmountPaid + paymentAmount;
-    const totalAmount = CalculationUtils.safeNumber(credit.totalAmount);
-    const newBalanceDue = Math.max(0, totalAmount - newAmountPaid);
-
-    // Add payment to history
-    credit.paymentHistory.push({
-      amount: paymentAmount,
-      paymentMethod,
-      recordedBy: recordedBy || 'System',
-      cashierName: cashierName || credit.cashierName,
-      paymentDate: new Date(),
-      notes: notes || `Payment of ${CalculationUtils.formatCurrency(paymentAmount)}`
-    });
-
-    // Update amounts
-    credit.amountPaid = newAmountPaid;
-    credit.balanceDue = newBalanceDue; // This now shows only the remaining balance
-
-    // Update status
-    let newStatus = credit.status;
-    if (newBalanceDue <= 0) {
-      newStatus = 'paid';
-    } else if (newAmountPaid > 0) {
-      newStatus = 'partially_paid';
-    } else {
-      newStatus = 'pending';
-    }
-    credit.status = newStatus;
-
-    credit.updatedAt = new Date();
-    await credit.save();
-
-    // Update corresponding transaction to reflect payment
-    if (credit.transactionId) {
-      await models.Transaction.findByIdAndUpdate(credit.transactionId, {
-        amountPaid: newAmountPaid,
-        recognizedRevenue: newAmountPaid,
-        outstandingRevenue: newBalanceDue, // This now shows only the remaining balance
-        creditStatus: newStatus,
-        updatedAt: new Date()
-      });
-    }
-
-    await credit.populate('transactionId');
-    await credit.populate('shop', 'name location type');
-    await credit.populate('cashierId', 'name email');
-
-    console.log('✅ Payment recorded successfully for credit:', {
-      creditId: req.params.id,
-      paymentAmount,
-      newAmountPaid,
-      newBalanceDue, // This now shows only the remaining balance
-      status: newStatus
-    });
-
-    res.json({
-      success: true,
-      data: credit,
-      message: `Payment of ${CalculationUtils.formatCurrency(paymentAmount)} recorded successfully`
-    });
-  } catch (error) {
-    console.error('Error recording payment:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to record payment',
-      error: error.message
-    });
-  }
-});
-
 // ==================== ADDITIONAL UTILITY ENDPOINTS ====================
-
-// Shop performance endpoint
-app.get('/api/transactions/shop-performance/:shopId', async (req, res) => {
-  try {
-    const { shopId } = req.params;
-    const { startDate, endDate } = req.query;
-    
-    const shop = await models.Shop.findById(shopId);
-    if (!shop) {
-      return res.status(404).json({
-        success: false,
-        message: 'Shop not found'
-      });
-    }
-
-    const filters = { shopId, startDate, endDate };
-    const transactionData = await getAllTransactionData(filters);
-
-    res.json({
-      success: true,
-      data: {
-        performance: transactionData.financialStats,
-        transactions: transactionData.salesWithProfit,
-        credits: transactionData.credits,
-        expenses: transactionData.expenses,
-        shopDetails: shop
-      },
-      message: 'Shop performance data fetched successfully',
-      cogsMethodology: 'complete_sales_plus_credit_sales_made',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching shop performance:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch shop performance data',
-      error: error.message
-    });
-  }
-});
-
-// Debug endpoint
-app.get('/api/debug/database', async (req, res) => {
-  try {
-    const counts = {
-      products: await models.Product.countDocuments(),
-      shops: await models.Shop.countDocuments(),
-      cashiers: await models.Cashier.countDocuments(),
-      expenses: await models.Expense.countDocuments(),
-      transactions: await models.Transaction.countDocuments(),
-      users: await models.User.countDocuments(),
-      secureCodes: await models.SecureCode.countDocuments(),
-      credits: await models.Credit.countDocuments()
-    };
-    
-    res.json({
-      success: true,
-      counts,
-      database: mongoose.connection.name,
-      status: 'connected',
-      cogsCalculation: 'complete_sales_plus_credit_sales_made',
-      creditPartialPayment: 'supported',
-      immediateRevenueTracking: 'enabled',
-      upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
-      creditDisplayLogic: 'balance_due_only'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Database check failed',
-      error: error.message
-    });
-  }
-});
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -3605,7 +2261,7 @@ app.get('/', (req, res) => {
     cogsCalculation: 'complete_sales_plus_credit_sales_made',
     creditPartialPayment: 'supported',
     immediateRevenueTracking: 'enabled',
-    upfrontCreditSupport: 'fully_enabled', // NEW: Indicate upfront credit support
+    upfrontCreditSupport: 'fully_enabled',
     creditDisplayLogic: 'balance_due_only'
   });
 });
@@ -3682,7 +2338,6 @@ const startServer = async () => {
 startServer();
 
 module.exports = app;
-
 
 
 
