@@ -6,14 +6,14 @@ require('dotenv').config();
 const createAdminUser = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://chemistseridah_db_user:m5pBLBogNk9Ov714@cluster0.5pw7hqj.mongodb.net/?appName=Cluster0');
+    await mongoose.connect(process.env.MONGODB_URI || 'MONGODB_URI=mongodb+srv://kinyuastanzo6759_db_user:Y9P9gdROuewvBmq8@cluster0.4rtcx4y.mongodb.net/?appName=Cluster0');
     console.log('✅ Connected to MongoDB');
-    
+    // MONGODB_URI=mongodb+srv://kinyuastanzo6759_db_user:Y9P9gdROuewvBmq8@cluster0.4rtcx4y.mongodb.net/?appName=Cluster0
     // FIXED PATH: Go up one level to backend root, then into models
     const User = require('../models/User');
     
     // Check if admin already exists
-    const existingAdmin = await User.findOne({ email: 'chemistseridah@gmail.com' });
+    const existingAdmin = await User.findOne({ email: 'kinyuastanzo6759@gmail.com'});
     if (existingAdmin) {
       console.log('⚠️ Admin user already exists');
       console.log('📧 Existing user:', existingAdmin.email);
@@ -23,7 +23,7 @@ const createAdminUser = async () => {
     
     // Create new admin user
     const adminUser = new User({
-      email: 'chemistseridah@gmail.com',
+      email:  'kinyuastanzo6759@gmail.com',
       password: await bcrypt.hash('admin123', 12),
       name: 'System Administrator',
       role: 'admin',
@@ -32,7 +32,7 @@ const createAdminUser = async () => {
 
     await adminUser.save();
     console.log('✅ Admin user created successfully!');
-    console.log('📧 Email: chemistseridah@gmail.com');
+    console.log('📧 Email: kinyuastanzo6759@gmail.com');
     console.log('🔑 Password: admin123');
     console.log('💡 Please change these credentials after login!');
     

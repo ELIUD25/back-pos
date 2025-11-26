@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "Your Name <your.kinyuastanzo6759@gmail.com>",
   "type": "commonjs",
-  "main": "app.js",
+  "main": "server.js",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
@@ -48,6 +48,8 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "path-to-regexp": "^6.2.1",
+    "recharts": "^3.4.1",
+    "response-time": "^2.3.4",
     "winston": "^3.11.0",
     "xss-clean": "^0.1.1"
   },

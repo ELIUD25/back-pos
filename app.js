@@ -3,55 +3,80 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 5001;
 
-// Enhanced CORS Configuration
+// ==================== ENHANCED CORS CONFIGURATION ====================
+
+// Configure CORS with proper options
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  // origin: process.env.FRONTEND_URL || 'https://stanzo-front.vercel.app/',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://space-jade.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      process.env.CLIENT_URL
+    ].filter(Boolean);
+
+    // Check if the origin is in allowed list or is a subdomain of allowed domains
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // Log blocked origins for debugging
+      console.log('🚫 CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
-    'Content-Type', 
-    'Accept', 
-    'X-Requested-With'
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'X-API-Key'
   ],
-  exposedHeaders: [],
-  maxAge: 86400 // 24 hours for preflight cache
+  exposedHeaders: [
+    'Content-Range',
+    'X-Content-Range',
+    'X-Total-Count'
+  ],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Essential Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Handle preflight requests globally
+app.options('*', cors(corsOptions));
 
-// Security Headers Middleware
+// Additional CORS headers middleware
 app.use((req, res, next) => {
-  res.header('X-Content-Type-Options', 'nosniff');
-  res.header('X-Frame-Options', 'DENY');
-  res.header('X-XSS-Protection', '1; mode=block');
+  // Set CORS headers for all responses
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    'https://space-jade.vercel.app',
+    'http://localhost:3000',
+    process.env.CLIENT_URL
+  ].filter(Boolean);
+
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key'
+  );
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400');
+  
   next();
-});
-
-// API Routes
-app.use('/api/auth', require('./routes/auth'));
-// ... other routes
-
-// Health Check Endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
-  });
-});
-
-// Error Handling Middleware (should be after routes)
-app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.stack);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
 });
 
 // Server Initialization

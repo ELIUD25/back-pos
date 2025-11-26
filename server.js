@@ -12,16 +12,32 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { body, validationResult } = require('express-validator');
+const responseTime = require('response-time');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// ==================== PERFORMANCE OPTIMIZATIONS ====================
+
+// Add response time middleware
+app.use(responseTime());
+
+// Add database query optimizations
+mongoose.set('debug', false); // Disable Mongoose debug in production
+
+// Add timeout middleware for specific routes
+app.use('/api/transactions/combined', (req, res, next) => {
+  req.setTimeout(30000); // 30 seconds timeout
+  res.setTimeout(30000);
+  next();
+});
+
 // ==================== ENHANCED MODELS ====================
 
 const createModels = () => {
   console.log('🔧 Creating enhanced models...');
-  
+ 
   // Enhanced Product Schema
   const productSchema = new mongoose.Schema({
     name: { type: String, required: true },
@@ -115,7 +131,7 @@ const createModels = () => {
     shopName: String,
     saleDate: { type: Date, default: Date.now },
     status: { type: String, default: 'completed' },
-    
+   
     // Enhanced Credit Fields
     isCreditTransaction: { type: Boolean, default: false },
     creditStatus: { type: String, enum: ['pending', 'partially_paid', 'paid', 'overdue'] },
@@ -123,22 +139,22 @@ const createModels = () => {
     outstandingRevenue: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0 },
     dueDate: Date,
-    
+   
     // Credit sale classification fields
     creditShopName: String,
     creditShopId: String,
     shopClassification: String,
-    
+   
     // UPDATED: Payment split tracking - upfront payments go to cash/bank_mpesa, only balance to credit
     paymentSplit: {
       cash: { type: Number, default: 0 },
       bank_mpesa: { type: Number, default: 0 },
       credit: { type: Number, default: 0 }
     },
-    
+   
     // NEW: Immediate revenue tracking for cashier (INCLUDES UPFRONT PAYMENTS)
     immediateRevenue: { type: Number, default: 0 },
-    
+   
     // NEW: Enhanced upfront payment tracking for credit sales
     upfrontPaymentAmount: { type: Number, default: 0 },
     upfrontPaymentMethod: String,
@@ -146,11 +162,11 @@ const createModels = () => {
       cash: { type: Number, default: 0 },
       bank_mpesa: { type: Number, default: 0 }
     },
-    
+   
     // NEW: Track if this is a credit payment (not a new credit sale)
     isCreditPayment: { type: Boolean, default: false },
     originalCreditId: { type: mongoose.Schema.Types.ObjectId, ref: 'Credit' },
-    
+   
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -184,7 +200,7 @@ const createModels = () => {
     cashierName: String,
     recordedBy: String,
     notes: String,
-    
+   
     // NEW: Enhanced upfront payment tracking for credit sales
     upfrontPaymentAmount: { type: Number, default: 0 },
     upfrontPaymentMethod: String,
@@ -192,10 +208,10 @@ const createModels = () => {
       cash: { type: Number, default: 0 },
       bank_mpesa: { type: Number, default: 0 }
     },
-    
+   
     // NEW: Immediate revenue from upfront payment
     immediateRevenue: { type: Number, default: 0 },
-    
+   
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now }
   });
@@ -249,7 +265,7 @@ const createEmailTransporter = () => {
     const emailPass = process.env.EMAIL_PASSWORD || 'your-gmail-password';
 
     console.log('📧 Configuring email transporter...');
-    
+   
     if (!emailUser || !emailPass) {
       throw new Error('Email credentials not configured');
     }
@@ -291,7 +307,7 @@ const initializeEmail = async () => {
 
 // ==================== STOCK MONITORING SYSTEM ====================
 
-// Stock notification email function
+// Stock notification email function - FIXED SYNTAX ERROR
 const sendStockAlertEmail = async (products, alertType) => {
   if (!emailTransporter) {
     console.log('⚠️ Email service not configured - skipping stock alert');
@@ -300,8 +316,9 @@ const sendStockAlertEmail = async (products, alertType) => {
 
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'kinyuastanzo6759@gmail.com';
-    
-    const subject = alertType === 'out_of_stock' 
+   
+    // FIXED: Proper template string syntax
+    const subject = alertType === 'out_of_stock'
       ? `🚨 URGENT: ${products.length} Products Out of Stock - ${process.env.APP_NAME || 'Shop Management'}`
       : `⚠️ ALERT: ${products.length} Products Low in Stock - ${process.env.APP_NAME || 'Shop Management'}`;
 
@@ -315,6 +332,7 @@ const sendStockAlertEmail = async (products, alertType) => {
       </tr>
     `).join('');
 
+    // FIXED: Proper template string syntax for the HTML content
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: ${alertType === 'out_of_stock' ? '#ff4444' : '#ff9800'}; color: white; padding: 20px; text-align: center;">
@@ -325,16 +343,16 @@ const sendStockAlertEmail = async (products, alertType) => {
             ${process.env.APP_NAME || 'Shop Management System'} - Automated Alert
           </p>
         </div>
-        
+       
         <div style="padding: 20px; background: #f9f9f9;">
           <p>Dear Administrator,</p>
           <p>
-            ${alertType === 'out_of_stock' 
+            ${alertType === 'out_of_stock'
               ? `The following <strong>${products.length} products</strong> are currently <strong style="color: #ff4444;">OUT OF STOCK</strong>. Immediate attention is required to restock these items.`
               : `The following <strong>${products.length} products</strong> are running <strong style="color: #ff9800;">LOW IN STOCK</strong>. Please consider restocking soon.`
             }
           </p>
-          
+         
           <div style="margin: 20px 0;">
             <table style="width: 100%; border-collapse: collapse; background: white;">
               <thead>
@@ -351,27 +369,27 @@ const sendStockAlertEmail = async (products, alertType) => {
               </tbody>
             </table>
           </div>
-          
+         
           <p>
             <strong>Action Required:</strong> Please log in to the system and update the stock levels for these products.
           </p>
-          
+         
           <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
             <p style="margin: 0;">
-              <strong>Note:</strong> This is an automated alert. 
-              ${alertType === 'out_of_stock' 
+              <strong>Note:</strong> This is an automated alert.
+              ${alertType === 'out_of_stock'
                 ? 'Reminders will be sent every 6 hours until stock is updated.'
                 : 'You will receive notifications for critical stock levels.'
               }
             </p>
           </div>
-          
+         
           <p>
             Best regards,<br>
             <strong>${process.env.APP_NAME || 'Shop Management'} System</strong>
           </p>
         </div>
-        
+       
         <div style="background: #333; color: white; padding: 15px; text-align: center; font-size: 12px;">
           <p style="margin: 0;">
             This email was automatically generated by the Inventory Management System.<br>
@@ -382,7 +400,7 @@ const sendStockAlertEmail = async (products, alertType) => {
     `;
 
     const mailOptions = {
-      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'kinyuastanzo6759@gmail.com'}>`,
+      from: `"Inventory Alert System" <${process.env.EMAIL_USER || 'ichigoeliud021@gmail.com'}>`,
       to: adminEmail,
       subject: subject,
       html: html,
@@ -406,85 +424,85 @@ class StockMonitor {
     this.isMonitoring = false;
   }
 
- // In your StockMonitor class, enhance the checkStockLevels method
-async checkStockLevels() {
-  try {
-    console.log('🔍 [STOCK MONITOR] Checking stock levels...');
-    
-    const products = await models.Product.find({ isActive: true })
-      .populate('shop', 'name location')
-      .lean();
+  // In your StockMonitor class, enhance the checkStockLevels method
+  async checkStockLevels() {
+    try {
+      console.log('🔍 [STOCK MONITOR] Checking stock levels...');
+     
+      const products = await models.Product.find({ isActive: true })
+        .populate('shop', 'name location')
+        .lean();
 
-    console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
+      console.log(`📊 [STOCK MONITOR] Found ${products.length} active products`);
 
-    const outOfStockProducts = [];
-    const lowStockProducts = [];
+      const outOfStockProducts = [];
+      const lowStockProducts = [];
 
-    products.forEach(product => {
-      const currentStock = product.currentStock || 0;
-      const minStockLevel = product.minStockLevel || 5;
-      
-      console.log(`📦 [STOCK MONITOR] ${product.name}: Stock=${currentStock}, Min=${minStockLevel}`);
-      
-      if (currentStock === 0) {
-        outOfStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
-      } else if (currentStock <= minStockLevel) {
-        lowStockProducts.push({
-          ...product,
-          shopName: product.shop?.name || product.shopName || 'Unknown Shop'
-        });
+      products.forEach(product => {
+        const currentStock = product.currentStock || 0;
+        const minStockLevel = product.minStockLevel || 5;
+       
+        console.log(`📦 [STOCK MONITOR] ${product.name}: Stock=${currentStock}, Min=${minStockLevel}`);
+       
+        if (currentStock === 0) {
+          outOfStockProducts.push({
+            ...product,
+            shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+          });
+        } else if (currentStock <= minStockLevel) {
+          lowStockProducts.push({
+            ...product,
+            shopName: product.shop?.name || product.shopName || 'Unknown Shop'
+          });
+        }
+      });
+
+      console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
+
+      // Send out of stock notifications
+      if (outOfStockProducts.length > 0) {
+        console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
+        await this.sendStockNotification(outOfStockProducts, 'out_of_stock');
+      } else {
+        console.log('✅ [STOCK MONITOR] No out of stock products');
       }
-    });
 
-    console.log(`🚨 [STOCK MONITOR] Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
+      // Send low stock notifications
+      if (lowStockProducts.length > 0) {
+        console.log(`📧 [STOCK MONITOR] Sending ${lowStockProducts.length} low stock alerts`);
+        await this.sendStockNotification(lowStockProducts, 'low_stock');
+      } else {
+        console.log('✅ [STOCK MONITOR] No low stock products');
+      }
 
-    // Send out of stock notifications
-    if (outOfStockProducts.length > 0) {
-      console.log(`📧 [STOCK MONITOR] Sending ${outOfStockProducts.length} out of stock alerts`);
-      await this.sendStockNotification(outOfStockProducts, 'out_of_stock');
-    } else {
-      console.log('✅ [STOCK MONITOR] No out of stock products');
+      return {
+        outOfStock: outOfStockProducts.length,
+        lowStock: lowStockProducts.length,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
+      throw error;
     }
-
-    // Send low stock notifications
-    if (lowStockProducts.length > 0) {
-      console.log(`📧 [STOCK MONITOR] Sending ${lowStockProducts.length} low stock alerts`);
-      await this.sendStockNotification(lowStockProducts, 'low_stock');
-    } else {
-      console.log('✅ [STOCK MONITOR] No low stock products');
-    }
-
-    return {
-      outOfStock: outOfStockProducts.length,
-      lowStock: lowStockProducts.length,
-      timestamp: new Date().toISOString()
-    };
-  } catch (error) {
-    console.error('❌ [STOCK MONITOR] Error checking stock levels:', error);
-    throw error;
   }
-}
 
   // Send stock notification with rate limiting
   async sendStockNotification(products, alertType) {
     const now = Date.now();
-    
+   
     for (const product of products) {
       const lastNotification = this.lastNotificationTime.get(product._id.toString());
-      
+     
       // Check if we should send notification (always send for out of stock, respect interval for low stock)
-      const shouldSend = alertType === 'out_of_stock' || 
-                        !lastNotification || 
+      const shouldSend = alertType === 'out_of_stock' ||
+                        !lastNotification ||
                         (now - lastNotification) >= this.notificationInterval;
 
       if (shouldSend) {
         console.log(`📧 Sending ${alertType} alert for product: ${product.name}`);
-        
+       
         const emailSent = await sendStockAlertEmail([product], alertType);
-        
+       
         if (emailSent) {
           this.lastNotificationTime.set(product._id.toString(), now);
         }
@@ -562,17 +580,15 @@ async checkStockLevels() {
 // Create global stock monitor instance
 const stockMonitor = new StockMonitor();
 
-
-
 // ==================== STOCK MONITORING DEBUG ENDPOINTS ====================
 
 // Test stock alert email directly
 app.post('/api/stock/test-email', async (req, res) => {
   try {
     const { alertType = 'low_stock' } = req.body;
-    
+   
     console.log('📧 TEST: Starting stock alert email test...');
-    
+   
     // Get a sample product for testing
     const sampleProduct = await models.Product.findOne({ isActive: true })
       .populate('shop', 'name location')
@@ -597,9 +613,9 @@ app.post('/api/stock/test-email', async (req, res) => {
       minLevel: testProduct.minStockLevel,
       alertType: alertType
     });
-    
+   
     const emailSent = await sendStockAlertEmail([testProduct], alertType);
-    
+   
     if (emailSent) {
       console.log('✅ TEST: Stock alert email sent successfully');
       res.json({
@@ -633,25 +649,25 @@ app.get('/api/stock/monitored-products', async (req, res) => {
   try {
     const status = stockMonitor.getStatus();
     const monitoredProductIds = status.lastNotifications.map(n => n.productId);
-    
+   
     console.log('📋 Getting monitored products:', monitoredProductIds);
-    
+   
     const monitoredProducts = await models.Product.find({
       _id: { $in: monitoredProductIds }
     }).populate('shop', 'name location');
-    
+   
     const productDetails = monitoredProducts.map(p => ({
       id: p._id,
       name: p.name,
       currentStock: p.currentStock,
       minStockLevel: p.minStockLevel,
       shopName: p.shop?.name || p.shopName,
-      status: (p.currentStock || 0) === 0 ? 'out_of_stock' : 
+      status: (p.currentStock || 0) === 0 ? 'out_of_stock' :
              (p.currentStock || 0) <= (p.minStockLevel || 5) ? 'low_stock' : 'normal'
     }));
-    
+   
     console.log('📋 MONITORED PRODUCTS DETAILS:', productDetails);
-    
+   
     res.json({
       success: true,
       data: productDetails,
@@ -677,9 +693,9 @@ app.get('/api/debug/email-status', async (req, res) => {
       hasEmailPassword: !!process.env.EMAIL_PASSWORD,
       appName: process.env.APP_NAME || 'Shop Management'
     };
-    
+   
     console.log('📧 EMAIL CONFIGURATION CHECK:', emailStatus);
-    
+   
     // Test email connection if transporter exists
     if (emailTransporter) {
       try {
@@ -696,7 +712,7 @@ app.get('/api/debug/email-status', async (req, res) => {
       emailStatus.connection = 'no_transporter';
       console.log('❌ No email transporter configured');
     }
-    
+   
     res.json({
       success: true,
       data: emailStatus
@@ -715,22 +731,22 @@ app.get('/api/debug/email-status', async (req, res) => {
 app.post('/api/stock/check-now-detailed', async (req, res) => {
   try {
     console.log('🔍 MANUAL STOCK CHECK WITH DETAILS TRIGGERED');
-    
+   
     const products = await models.Product.find({ isActive: true })
       .populate('shop', 'name location')
       .lean();
 
     console.log(`📊 Found ${products.length} active products`);
-    
+   
     const outOfStockProducts = [];
     const lowStockProducts = [];
 
     products.forEach(product => {
       const currentStock = product.currentStock || 0;
       const minStockLevel = product.minStockLevel || 5;
-      
+     
       console.log(`📦 ${product.name}: Stock=${currentStock}, Min=${minStockLevel}, Low=${currentStock <= minStockLevel}, Out=${currentStock === 0}`);
-      
+     
       if (currentStock === 0) {
         outOfStockProducts.push({
           ...product,
@@ -745,13 +761,13 @@ app.post('/api/stock/check-now-detailed', async (req, res) => {
     });
 
     console.log(`🚨 Stock Check Results: ${outOfStockProducts.length} out of stock, ${lowStockProducts.length} low stock`);
-    
+   
     // Send alerts
     if (outOfStockProducts.length > 0) {
       console.log(`📧 Sending ${outOfStockProducts.length} out of stock alerts`);
       await stockMonitor.sendStockNotification(outOfStockProducts, 'out_of_stock');
     }
-    
+   
     if (lowStockProducts.length > 0) {
       console.log(`📧 Sending ${lowStockProducts.length} low stock alerts`);
       await stockMonitor.sendStockNotification(lowStockProducts, 'low_stock');
@@ -778,6 +794,7 @@ app.post('/api/stock/check-now-detailed', async (req, res) => {
     });
   }
 });
+
 // ==================== SECURE CODE AUTHENTICATION ====================
 
 const generateSecureCode = () => {
@@ -822,9 +839,9 @@ const sendSecureCodeEmail = async (email, code) => {
 
 const generateAuthToken = (userId, email, role) => {
   return jwt.sign(
-    { 
-      userId, 
-      email, 
+    {
+      userId,
+      email,
       role,
       timestamp: Date.now()
     },
@@ -863,7 +880,7 @@ const CalculationUtils = {
   // Calculate COGS for transactions array - includes complete sales + credit sales made
   calculateCOGS: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
-    
+   
     return transactions.reduce((sum, transaction) => {
       const cost = CalculationUtils.safeNumber(transaction.cost);
       return sum + cost;
@@ -873,13 +890,13 @@ const CalculationUtils = {
   // Calculate revenue with proper upfront payment recognition
   calculateRevenue: (transactions) => {
     if (!Array.isArray(transactions)) return 0;
-    
+   
     return transactions.reduce((sum, transaction) => {
       // For credit payments, use the payment amount as revenue
       if (transaction.isCreditPayment) {
         return sum + CalculationUtils.safeNumber(transaction.totalAmount);
       }
-      
+     
       // For regular transactions, use recognized revenue (includes immediate revenue for credit sales)
       return sum + CalculationUtils.safeNumber(transaction.recognizedRevenue || transaction.immediateRevenue || transaction.totalAmount);
     }, 0);
@@ -892,7 +909,7 @@ const CalculationUtils = {
       if (transaction.cost && CalculationUtils.safeNumber(transaction.cost) > 0) {
         return CalculationUtils.safeNumber(transaction.cost);
       }
-      
+     
       if (transaction.totalCost && CalculationUtils.safeNumber(transaction.totalCost) > 0) {
         return CalculationUtils.safeNumber(transaction.totalCost);
       }
@@ -900,13 +917,13 @@ const CalculationUtils = {
       // Calculate cost from items
       if (transaction.items && Array.isArray(transaction.items)) {
         let totalCost = 0;
-        
+       
         for (const item of transaction.items) {
           const quantity = CalculationUtils.safeNumber(item.quantity, 1);
-          
+         
           // Try to get cost from different sources in priority order
           let itemCost = 0;
-          
+         
           // Priority 1: Direct cost field in item
           if (item.cost && CalculationUtils.safeNumber(item.cost) > 0) {
             itemCost = CalculationUtils.safeNumber(item.cost);
@@ -917,12 +934,12 @@ const CalculationUtils = {
           }
           // Priority 3: Look up product buying price from products array
           else if (item.productId && products.length > 0) {
-            const product = products.find(p => 
-              p._id && item.productId && 
-              (p._id.toString() === item.productId.toString() || 
+            const product = products.find(p =>
+              p._id && item.productId &&
+              (p._id.toString() === item.productId.toString() ||
                (p._id && item.productId._id && p._id.toString() === item.productId._id.toString()))
             );
-            
+           
             if (product) {
               itemCost = CalculationUtils.safeNumber(product.buyingPrice);
             }
@@ -934,10 +951,10 @@ const CalculationUtils = {
 
           totalCost += itemCost * quantity;
         }
-        
+       
         return totalCost;
       }
-      
+     
       return 0;
     } catch (error) {
       console.error('❌ Error calculating cost from items:', error);
@@ -966,7 +983,7 @@ const CalculationUtils = {
           immediateRevenue: CalculationUtils.safeNumber(transaction.totalAmount), // Track immediate revenue
           creditStatus: null,
           itemsCount: 0, // Credit payments don't have items
-          displayDate: transaction.displayDate || 
+          displayDate: transaction.displayDate ||
                       new Date(transaction.saleDate || transaction.createdAt).toLocaleString('en-KE'),
           _processedAt: new Date().toISOString(),
           _isValid: true
@@ -974,29 +991,29 @@ const CalculationUtils = {
       }
 
       // Multiple ways to detect credit transactions
-      const isCredit = transaction.paymentMethod === 'credit' || 
-                      transaction.isCredit === true || 
+      const isCredit = transaction.paymentMethod === 'credit' ||
+                      transaction.isCredit === true ||
                       transaction.transactionType === 'credit' ||
                       transaction.isCreditTransaction === true ||
                       transaction.status === 'credit';
-      
+     
       // Use server-calculated values when available, otherwise calculate
-      const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) || 
+      const totalAmount = CalculationUtils.safeNumber(transaction.totalAmount) ||
                          CalculationUtils.safeNumber(transaction.amount) || 0;
-      
+     
       // Use the new cost calculation function with products data
       const cost = await CalculationUtils.calculateCostFromItems(transaction, products);
-      
+     
       // Credit management revenue recognition logic
-      const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) || 
+      const amountPaid = CalculationUtils.safeNumber(transaction.amountPaid) ||
                         CalculationUtils.safeNumber(transaction.paidAmount) || 0;
-      
+     
       // For credit transactions, recognized revenue is the amount paid immediately
       const recognizedRevenue = isCredit ? amountPaid : totalAmount;
-      
-      const outstandingRevenue = isCredit ? 
-        (CalculationUtils.safeNumber(transaction.outstandingRevenue) || 
-         CalculationUtils.safeNumber(transaction.balanceDue) || 
+     
+      const outstandingRevenue = isCredit ?
+        (CalculationUtils.safeNumber(transaction.outstandingRevenue) ||
+         CalculationUtils.safeNumber(transaction.balanceDue) ||
          Math.max(0, totalAmount - amountPaid)) : 0;
 
       // Track immediate revenue (INCLUDES UPFRONT PAYMENTS)
@@ -1008,7 +1025,7 @@ const CalculationUtils = {
 
       // Enhanced date handling
       const saleDate = transaction.saleDate || transaction.createdAt || transaction.date;
-      const displayDate = transaction.displayDate || 
+      const displayDate = transaction.displayDate ||
                          (saleDate ? new Date(saleDate).toLocaleString('en-KE') : 'Date Unknown');
 
       // Determine credit status
@@ -1021,7 +1038,7 @@ const CalculationUtils = {
         } else {
           creditStatus = 'pending';
         }
-        
+       
         // Check if overdue
         if (transaction.dueDate && new Date(transaction.dueDate) < new Date() && outstandingRevenue > 0) {
           creditStatus = 'overdue';
@@ -1040,7 +1057,7 @@ const CalculationUtils = {
         amountPaid,
         immediateRevenue, // Track immediate revenue including upfront payments
         creditStatus,
-        itemsCount: transaction.items ? transaction.items.reduce((sum, item) => 
+        itemsCount: transaction.items ? transaction.items.reduce((sum, item) =>
           sum + CalculationUtils.safeNumber(item.quantity, 1), 0) : 0,
         displayDate,
         _processedAt: new Date().toISOString(),
@@ -1090,14 +1107,14 @@ const CalculationUtils = {
 
     // Enhanced sales with profit calculation using the new processSingleTransaction
     const salesWithProfit = await Promise.all(
-      transactions.map(transaction => 
+      transactions.map(transaction =>
         CalculationUtils.processSingleTransaction(transaction, products)
       )
     );
 
     // Filter transactions based on shop if provided
-    const filteredTransactions = selectedShop && selectedShop !== 'all' ? 
-      salesWithProfit.filter(t => 
+    const filteredTransactions = selectedShop && selectedShop !== 'all' ?
+      salesWithProfit.filter(t =>
         t.shop === selectedShop || t.shopId === selectedShop
       ) : salesWithProfit;
 
@@ -1112,16 +1129,16 @@ const CalculationUtils = {
     const creditSales = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const nonCreditSales = nonCreditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const creditPaymentRevenue = creditPayments.reduce((sum, t) => sum + t.totalAmount, 0);
-    
+   
     // COGS CALCULATION: Sum up all transaction costs (both complete + credit sales)
     const costOfGoodsSold = CalculationUtils.calculateCOGS(filteredTransactions);
-    
+   
     const grossProfit = totalRevenue - costOfGoodsSold;
-    
+   
     // Expense calculations
     const totalExpenses = expenses.reduce((sum, e) => sum + CalculationUtils.safeNumber(e.amount), 0);
     const netProfit = grossProfit - totalExpenses;
-    
+   
     // PAYMENT METHOD CALCULATIONS: Include upfront payments in cash/bank_mpesa
     let totalCash = 0;
     let totalMpesaBank = 0;
@@ -1149,14 +1166,14 @@ const CalculationUtils = {
         }
       }
     });
-    
+   
     // CREDIT CALCULATIONS: outstandingCredit shows only remaining balance
     const outstandingCredit = credits
-      .filter(credit => credit.status !== 'paid' && 
-        (!selectedShop || selectedShop === 'all' || 
+      .filter(credit => credit.status !== 'paid' &&
+        (!selectedShop || selectedShop === 'all' ||
          credit.shop === selectedShop || credit.shopId === selectedShop))
       .reduce((sum, credit) => sum + CalculationUtils.safeNumber(credit.balanceDue), 0);
-    
+   
     const totalCreditGiven = creditTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
     const recognizedCreditRevenue = creditTransactions.reduce((sum, t) => sum + t.recognizedRevenue, 0);
     const immediateRevenueTotal = filteredTransactions.reduce((sum, t) => sum + (t.immediateRevenue || 0), 0);
@@ -1188,7 +1205,7 @@ const CalculationUtils = {
       completeTransactionsCount: nonCreditTransactions.length,
       recognizedCreditRevenue: recognizedCreditRevenue,
       profitMargin: CalculationUtils.calculateProfitMargin(totalRevenue, netProfit),
-      creditCollectionRate: totalCreditGiven > 0 ? 
+      creditCollectionRate: totalCreditGiven > 0 ?
         (recognizedCreditRevenue / totalCreditGiven) * 100 : 0,
       totalItemsSold: filteredTransactions.reduce((sum, t) => sum + t.itemsCount, 0),
       averageTransactionValue: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
@@ -1248,7 +1265,7 @@ const CalculationUtils = {
 
     // Calculate top products
     const topProducts = CalculationUtils.calculateTopProducts(filteredTransactions, 10);
-    
+   
     // Calculate shop performance
     const shopPerformance = CalculationUtils.calculateShopPerformance(filteredTransactions, shops);
 
@@ -1290,14 +1307,14 @@ const CalculationUtils = {
 
   calculateTopProducts: (transactions, limit = 10) => {
     if (!Array.isArray(transactions)) return [];
-    
+   
     const productMap = {};
-    
+   
     transactions.forEach(transaction => {
       transaction.items?.forEach(item => {
         const productId = item.productId?.toString() || item.productName;
         const productName = item.productName || 'Unknown Product';
-        
+       
         if (!productMap[productId]) {
           productMap[productId] = {
             id: productId,
@@ -1309,12 +1326,12 @@ const CalculationUtils = {
             transactions: 0
           };
         }
-        
+       
         const quantity = CalculationUtils.safeNumber(item.quantity, 1);
         const revenue = CalculationUtils.safeNumber(item.totalPrice);
         const cost = CalculationUtils.safeNumber(item.buyingPrice) * quantity;
         const profit = revenue - cost;
-        
+       
         productMap[productId].totalSold += quantity;
         productMap[productId].totalRevenue += revenue;
         productMap[productId].totalProfit += profit;
@@ -1322,7 +1339,7 @@ const CalculationUtils = {
         productMap[productId].transactions += 1;
       });
     });
-    
+   
     return Object.values(productMap)
       .map(product => ({
         ...product,
@@ -1335,15 +1352,15 @@ const CalculationUtils = {
 
   calculateShopPerformance: (transactions, shops) => {
     if (!Array.isArray(transactions)) return [];
-    
+   
     const shopMap = {};
-    
+   
     transactions.forEach(transaction => {
       const shopId = transaction.shop || transaction.shopId;
       if (!shopId) return;
-      
+     
       if (!shopMap[shopId]) {
-        const shop = shops.find(s => s._id.toString() === shopId.toString()) || 
+        const shop = shops.find(s => s._id.toString() === shopId.toString()) ||
                     { name: 'Unknown Shop', location: 'Unknown' };
         shopMap[shopId] = {
           id: shopId,
@@ -1357,7 +1374,7 @@ const CalculationUtils = {
           immediateRevenue: 0
         };
       }
-      
+     
       shopMap[shopId].revenue += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
       shopMap[shopId].transactions += 1;
       shopMap[shopId].profit += CalculationUtils.safeNumber(transaction.profit);
@@ -1365,7 +1382,7 @@ const CalculationUtils = {
       shopMap[shopId].itemsSold += CalculationUtils.safeNumber(transaction.itemsCount);
       shopMap[shopId].immediateRevenue += CalculationUtils.safeNumber(transaction.immediateRevenue || transaction.recognizedRevenue);
     });
-    
+   
     return Object.values(shopMap)
       .map(shop => ({
         ...shop,
@@ -1375,12 +1392,13 @@ const CalculationUtils = {
       .sort((a, b) => b.revenue - a.revenue);
   }
 };
+
 // Add this to check if monitoring is active
 app.get('/api/stock/monitoring/status', async (req, res) => {
   try {
     const status = stockMonitor.getStatus();
     console.log('📊 Stock Monitoring Status:', status);
-    
+   
     res.json({
       success: true,
       data: status,
@@ -1431,6 +1449,7 @@ app.get('/api/debug/products-stock', async (req, res) => {
     });
   }
 });
+
 // ==================== MIDDLEWARE SETUP ====================
 
 app.use(helmet({
@@ -1446,7 +1465,7 @@ app.use((req, res, next) => {
 app.use(compression());
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
@@ -1482,93 +1501,175 @@ app.use(morgan('dev'));
 
 // ==================== DATABASE CONNECTION ====================
 
-const connectDB = async () => {
-  try {
-    const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/stanzo_db';
-    
-    console.log('🔗 Connecting to MongoDB...');
-    
-    await mongoose.connect(connectionString, {
-      serverSelectionTimeoutMS: 15000,
-      socketTimeoutMS: 45000,
-      maxPoolSize: 25,
-      minPoolSize: 5,
-      retryWrites: true
-    });
-    
-    console.log('✅ MongoDB connected successfully');
-    
-    models = createModels();
-    await initializeEmail();
-    await createDefaultAdmin();
-    
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    process.exit(1);
-  }
-};
+let isConnected = false;
+let connectionRetryCount = 0;
+const MAX_RETRY_COUNT = 3;
 
+// MOVE createDefaultAdmin function HERE, before connectDB
 const createDefaultAdmin = async () => {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'kinyuastanzo6759@gmail.com';
+    const adminName = process.env.ADMIN_NAME || 'System Administrator';
     
+    console.log(`👤 Setting up default admin: ${adminEmail}`);
+    
+    // Check if admin already exists
     const existingAdmin = await models.User.findOne({ email: adminEmail });
-    if (!existingAdmin) {
-      await models.User.create({
-        email: adminEmail,
-        name: 'System Administrator',
-        role: 'admin'
+    
+    if (existingAdmin) {
+      console.log('✅ Admin user already exists:', {
+        email: existingAdmin.email,
+        name: existingAdmin.name,
+        role: existingAdmin.role
       });
-      console.log('✅ Default admin user created');
-    } else {
-      console.log('✅ Admin user already exists');
+      
+      // Update last login timestamp
+      existingAdmin.lastLogin = new Date();
+      await existingAdmin.save();
+      return existingAdmin;
     }
+
+    // Create new admin user
+    const adminUser = await models.User.create({
+      email: adminEmail,
+      name: adminName,
+      role: 'admin',
+      isActive: true,
+      lastLogin: new Date()
+    });
+
+    console.log('✅ Default admin user created successfully:', {
+      email: adminUser.email,
+      name: adminUser.name,
+      role: adminUser.role,
+      id: adminUser._id
+    });
+
+    return adminUser;
+    
   } catch (error) {
-    console.log('⚠️ Could not create admin user:', error.message);
+    console.error('❌ Error creating default admin user:', error.message);
+    
+    // Don't crash the app if admin creation fails
+    console.log('⚠️ Application will continue without default admin user');
+    return null;
   }
 };
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'stanzo_session_secret_change_in_production',
-  resave: false,
-  saveUninitialized: false,
-  store: MongoStore.create({
-    mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/stanzo_db',
-    collectionName: 'sessions'
-  }),
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
-  }
-}));
-
-// ==================== AUTHENTICATION MIDDLEWARE ====================
-
-const verifyToken = (req, res, next) => {
-  const token = req.header('Authorization')?.replace('Bearer ', '') || 
-                req.session.token;
-  
-  if (!token) {
-    return res.status(401).json({ 
-      success: false,
-      message: 'No token provided' 
-    });
-  }
-
+const connectDB = async () => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret-key-change-in-production');
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ 
-      success: false,
-      message: 'Invalid token' 
+    // Prevent multiple connection attempts
+    if (isConnected) {
+      console.log('✅ MongoDB already connected');
+      return;
+    }
+
+    const connectionString = process.env.MONGODB_URI || 'mongodb://localhost:27017/stanzo_db';
+    
+    console.log('🔗 Connecting to MongoDB...');
+    console.log(`📊 Connection attempt: ${connectionRetryCount + 1}/${MAX_RETRY_COUNT}`);
+    console.log(`📍 Database: ${connectionString.split('@').pop() || connectionString}`);
+
+    const connectionOptions = {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 50,
+      minPoolSize: 10,
+      retryWrites: true,
+      retryReads: true,
+      bufferCommands: false,
+      connectTimeoutMS: 30000,
+      heartbeatFrequencyMS: 10000,
+      maxIdleTimeMS: 30000
+    };
+
+    console.log('⚙️ Using optimized connection options:', {
+      serverSelectionTimeoutMS: connectionOptions.serverSelectionTimeoutMS,
+      maxPoolSize: connectionOptions.maxPoolSize,
+      minPoolSize: connectionOptions.minPoolSize,
+      bufferCommands: connectionOptions.bufferCommands
     });
+
+    // Set up MongoDB connection events
+    mongoose.connection.on('connected', () => {
+      console.log('✅ MongoDB connected successfully');
+      isConnected = true;
+      connectionRetryCount = 0;
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err.message);
+      isConnected = false;
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('⚠️ MongoDB disconnected');
+      isConnected = false;
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔄 MongoDB reconnected');
+      isConnected = true;
+    });
+
+    // Handle application termination
+    process.on('SIGINT', async () => {
+      try {
+        await mongoose.connection.close();
+        console.log('🛑 MongoDB connection closed through app termination');
+        process.exit(0);
+      } catch (error) {
+        console.error('❌ Error closing MongoDB connection:', error);
+        process.exit(1);
+      }
+    });
+
+    // Attempt connection
+    await mongoose.connect(connectionString, connectionOptions);
+    
+    // Verify connection
+    await mongoose.connection.db.admin().ping();
+    console.log('🏓 MongoDB ping successful - connection verified');
+
+    // Initialize models
+    models = createModels();
+    console.log('📦 Database models initialized');
+
+    // Initialize email service
+    const emailInitialized = await initializeEmail();
+    if (emailInitialized) {
+      console.log('📧 Email service initialized successfully');
+    } else {
+      console.log('⚠️ Email service initialization failed - running in limited mode');
+    }
+
+    // Create default admin - NOW THIS WILL WORK
+    await createDefaultAdmin();
+    
+    console.log('🎉 Database initialization completed successfully');
+    
+  } catch (error) {
+    connectionRetryCount++;
+    console.error(`❌ MongoDB connection failed (attempt ${connectionRetryCount}/${MAX_RETRY_COUNT}):`, error.message);
+    
+    // Retry logic with exponential backoff
+    if (connectionRetryCount < MAX_RETRY_COUNT) {
+      const retryDelay = Math.min(1000 * Math.pow(2, connectionRetryCount), 30000);
+      console.log(`🔄 Retrying connection in ${retryDelay / 1000} seconds...`);
+      
+      setTimeout(() => {
+        connectDB().catch(err => {
+          console.error('❌ Retry failed:', err.message);
+        });
+      }, retryDelay);
+    } else {
+      console.error('💥 Maximum connection retries reached. Exiting application.');
+      process.exit(1);
+    }
   }
 };
 
-// ==================== ENHANCED TRANSACTION DATA FETCHING ====================
+// ==================== OPTIMIZED TRANSACTION DATA FETCHING ====================
 
 const getAllTransactionData = async (filters = {}) => {
   try {
@@ -1581,13 +1682,14 @@ const getAllTransactionData = async (filters = {}) => {
       status
     } = filters;
 
-    console.log('📊 Fetching enhanced transaction data with filters:', filters);
+    console.log('📊 Fetching optimized transaction data with filters:', filters);
 
-    // Include both completed AND credit transactions
-    let filter = { 
-      status: { $in: ['completed', 'credit'] } // Include both statuses
+    // Build filter more efficiently
+    let filter = {
+      status: { $in: ['completed', 'credit'] }
     };
-    // Date filter
+
+    // Date filter - only apply if dates are provided
     if (startDate && endDate) {
       filter.saleDate = {
         $gte: new Date(startDate),
@@ -1603,52 +1705,54 @@ const getAllTransactionData = async (filters = {}) => {
       ];
     }
 
-    // Cashier filter
-    if (cashierId && cashierId !== 'all') {
-      filter.$or = [
-        { cashierId: cashierId },
-        { cashierName: { $regex: cashierId, $options: 'i' } }
-      ];
-    }
+    // OPTIMIZATION: Use lean() and select only necessary fields
+    const transactionProjection = {
+      totalAmount: 1, cost: 1, profit: 1, profitMargin: 1,
+      items: 1, itemsCount: 1, paymentMethod: 1, 
+      customerName: 1, cashierName: 1, cashierId: 1,
+      shop: 1, shopId: 1, shopName: 1, saleDate: 1,
+      status: 1, isCreditTransaction: 1, creditStatus: 1,
+      recognizedRevenue: 1, outstandingRevenue: 1, amountPaid: 1,
+      paymentSplit: 1, immediateRevenue: 1, upfrontPaymentAmount: 1,
+      isCreditPayment: 1, createdAt: 1
+    };
 
-    // Payment method filter
-    if (paymentMethod && paymentMethod !== 'all') {
-      if (paymentMethod === 'digital') {
-        filter.paymentMethod = { $in: ['mpesa', 'bank', 'card'] };
-      } else if (paymentMethod === 'credit') {
-        filter.paymentMethod = 'credit';
-      } else {
-        filter.paymentMethod = paymentMethod;
-      }
-    }
-
-    // Fetch all data in parallel
     const [transactions, shops, cashiers, products, expenses, credits] = await Promise.all([
-      models.Transaction.find(filter)
+      models.Transaction.find(filter, transactionProjection)
         .populate('shop', 'name location type')
         .populate('cashierId', 'name email')
-        .populate('items.productId', 'name buyingPrice currentStock')
+        .populate('items.productId', 'name buyingPrice')
         .sort({ saleDate: -1 })
-        .lean(),
-      models.Shop.find().lean(),
-      models.Cashier.find().lean(),
-      models.Product.find().lean(), // Ensure all products are fetched for cost calculation
+        .lean()
+        .maxTimeMS(30000), // 30 second timeout for this query
+      
+      models.Shop.find({}, 'name location type').lean(),
+      models.Cashier.find({}, 'name email shopId shopName').lean(),
+      models.Product.find({}, 'name buyingPrice currentStock shop shopName').lean(),
+      
       models.Expense.find(startDate && endDate ? {
         date: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}).populate('shop', 'name').lean(),
+      } : {}, 'description amount category date shop shopId shopName recordedBy')
+        .populate('shop', 'name')
+        .lean(),
+      
       models.Credit.find(startDate && endDate ? {
         createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      } : {}).populate('transactionId').populate('shop').populate('cashierId').lean()
+      } : {}, 'transactionId customerName customerPhone totalAmount amountPaid balanceDue dueDate status shop shopId shopName cashierId cashierName upfrontPaymentAmount immediateRevenue')
+        .populate('transactionId', 'totalAmount saleDate')
+        .populate('shop', 'name location')
+        .populate('cashierId', 'name email')
+        .lean()
     ]);
 
-    console.log(`✅ Enhanced transaction data fetched: ${transactions.length} transactions, ${products.length} products, ${credits.length} credits`);
+    console.log(`✅ Optimized data fetched: ${transactions.length} transactions`);
 
-    // Process data using enhanced utility
+    // Process data
     const processedData = await CalculationUtils.processComprehensiveData({
       transactions,
       shops,
       cashiers,
-      products, // Pass products for cost calculation
+      products,
       expenses,
       credits
     }, shopId);
@@ -1666,7 +1770,7 @@ const getAllTransactionData = async (filters = {}) => {
 app.post('/api/transactions', async (req, res) => {
   try {
     const transactionData = req.body;
-    
+   
     console.log('💳 Creating transaction with enhanced upfront payment support:', {
       paymentMethod: transactionData.paymentMethod,
       totalAmount: transactionData.totalAmount,
@@ -1679,10 +1783,10 @@ app.post('/api/transactions', async (req, res) => {
 
     // Check for duplicate transaction
     if (transactionData.transactionNumber) {
-      const existingTransaction = await models.Transaction.findOne({ 
-        transactionNumber: transactionData.transactionNumber 
+      const existingTransaction = await models.Transaction.findOne({
+        transactionNumber: transactionData.transactionNumber
       });
-      
+     
       if (existingTransaction) {
         console.log('⚠️ Duplicate transaction detected:', transactionData.transactionNumber);
         return res.status(409).json({
@@ -1737,12 +1841,12 @@ app.post('/api/transactions', async (req, res) => {
           if (product) {
             const currentStock = CalculationUtils.safeNumber(product.currentStock);
             const newStock = Math.max(0, currentStock - quantity);
-            
+           
             await models.Product.findByIdAndUpdate(item.productId, {
               currentStock: newStock,
               updatedAt: new Date()
             });
-            
+           
             console.log(`📦 Stock reduced for ${product.name}: ${currentStock} -> ${newStock} (sold: ${quantity})`);
 
             // Check if stock is now low or out of stock
@@ -1775,7 +1879,7 @@ app.post('/api/transactions', async (req, res) => {
     // Handle credit transactions with upfront payment support
     const amountPaidNow = CalculationUtils.safeNumber(transactionData.amountPaidNow) || 0;
     const isCreditTransaction = transactionData.paymentMethod === 'credit';
-    
+   
     let recognizedRevenue = totalAmount;
     let outstandingRevenue = 0;
     let amountPaid = totalAmount;
@@ -1788,7 +1892,7 @@ app.post('/api/transactions', async (req, res) => {
       recognizedRevenue = amountPaidNow; // Only recognize what's paid immediately
       outstandingRevenue = Math.max(0, totalAmount - amountPaidNow);
       immediateRevenue = amountPaidNow; // Immediate revenue is the upfront payment
-      
+     
       // Determine credit status based on payment
       if (outstandingRevenue <= 0) {
         creditStatus = 'paid';
@@ -1824,23 +1928,23 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.outstandingRevenue = outstandingRevenue;
       transactionData.amountPaid = amountPaid;
       transactionData.status = 'credit';
-      
+     
       // Track immediate revenue for cashier dashboard (UPFRONT PAYMENT)
       transactionData.immediateRevenue = immediateRevenue;
-      
+     
       // Store credit shop classification
       transactionData.creditShopName = transactionData.creditShopName || transactionData.shopName;
       transactionData.creditShopId = transactionData.creditShopId || transactionData.shopId;
       transactionData.shopClassification = transactionData.shopClassification || transactionData.shopName;
-      
+     
       // Upfront payment tracking
       transactionData.upfrontPaymentAmount = amountPaidNow;
       transactionData.upfrontPaymentMethod = transactionData.upfrontPaymentMethod || 'cash';
-      
+     
       if (transactionData.upfrontPaymentSplit) {
         transactionData.upfrontPaymentSplit = transactionData.upfrontPaymentSplit;
       }
-      
+     
       // PAYMENT SPLIT LOGIC: Upfront payment goes to cash/bank_mpesa, only balance to credit
       if (amountPaidNow > 0) {
         // For credit sales with upfront payment, track the payment method
@@ -1858,7 +1962,7 @@ app.post('/api/transactions', async (req, res) => {
         // No upfront payment, entire amount is credit
         transactionData.paymentSplit.credit = totalAmount;
       }
-      
+     
       // Set due date if not provided (default 30 days)
       if (!transactionData.dueDate) {
         transactionData.dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -1871,7 +1975,7 @@ app.post('/api/transactions', async (req, res) => {
       transactionData.amountPaid = amountPaid;
       transactionData.status = 'completed';
       transactionData.immediateRevenue = immediateRevenue;
-      
+     
       // Update payment split for non-credit transactions
       if (transactionData.paymentMethod === 'cash') {
         transactionData.paymentSplit.cash = totalAmount;
@@ -1891,7 +1995,7 @@ app.post('/api/transactions', async (req, res) => {
 
     const transaction = new models.Transaction(transactionData);
     await transaction.save();
-    
+   
     await transaction.populate('shop', 'name location type');
     await transaction.populate('cashierId', 'name email');
     await transaction.populate('items.productId', 'name buyingPrice');
@@ -1899,10 +2003,10 @@ app.post('/api/transactions', async (req, res) => {
     // Create credit record ONLY if this is a credit transaction AND doesn't already exist
     if (isCreditTransaction && !transactionData.isCreditPayment) {
       // Check if credit record already exists to prevent duplication
-      const existingCredit = await models.Credit.findOne({ 
-        transactionId: transaction._id 
+      const existingCredit = await models.Credit.findOne({
+        transactionId: transaction._id
       });
-      
+     
       if (!existingCredit) {
         const creditData = {
           transactionId: transaction._id,
@@ -1924,7 +2028,7 @@ app.post('/api/transactions', async (req, res) => {
           cashierName: transactionData.cashierName,
           recordedBy: transactionData.recordedBy || 'System',
           notes: `Credit transaction created for ${transactionData.customerName}`,
-          
+         
           // Enhanced upfront payment tracking
           upfrontPaymentAmount: amountPaidNow,
           upfrontPaymentMethod: transactionData.upfrontPaymentMethod || 'cash',
@@ -2035,7 +2139,7 @@ async function handleCreditPayment(transactionData, res) {
     // Update the credit record
     originalCredit.amountPaid = newAmountPaid;
     originalCredit.balanceDue = newBalanceDue; // This now shows only the remaining balance
-    
+   
     // Update status
     let newStatus = originalCredit.status;
     if (newBalanceDue <= 0) {
@@ -2140,7 +2244,7 @@ async function handleCreditPayment(transactionData, res) {
 app.post('/api/stock/check-now', async (req, res) => {
   try {
     const result = await stockMonitor.checkStockLevels();
-    
+   
     res.json({
       success: true,
       data: result,
@@ -2161,7 +2265,7 @@ app.post('/api/stock/monitoring/start', async (req, res) => {
   try {
     const { intervalMinutes = 60 } = req.body;
     stockMonitor.startMonitoring(intervalMinutes);
-    
+   
     res.json({
       success: true,
       message: `Stock monitoring started (checking every ${intervalMinutes} minutes)`,
@@ -2180,7 +2284,7 @@ app.post('/api/stock/monitoring/start', async (req, res) => {
 app.post('/api/stock/monitoring/stop', async (req, res) => {
   try {
     stockMonitor.stopMonitoring();
-    
+   
     res.json({
       success: true,
       message: 'Stock monitoring stopped',
@@ -2300,7 +2404,7 @@ app.post('/api/auth/request-code',
       const { email } = req.body;
       console.log('📧 Secure code request for:', email);
 
-      const user = await models.User.findOne({ email }) || 
+      const user = await models.User.findOne({ email }) ||
                    await models.Cashier.findOne({ email });
 
       if (!user) {
@@ -2315,7 +2419,7 @@ app.post('/api/auth/request-code',
       expiresAt.setMinutes(expiresAt.getMinutes() + 15);
 
       const hashedCode = await bcrypt.hash(secureCode, 10);
-      
+     
       await models.SecureCode.findOneAndUpdate(
         { email },
         {
@@ -2424,7 +2528,7 @@ app.post('/api/auth/verify-code',
       if (!isValidCode) {
         secureCode.attempts += 1;
         await secureCode.save();
-        
+       
         return res.status(400).json({
           success: false,
           message: 'Invalid secure code',
@@ -2437,7 +2541,7 @@ app.post('/api/auth/verify-code',
       await secureCode.save();
 
       // Find user
-      const user = await models.User.findOne({ email }) || 
+      const user = await models.User.findOne({ email }) ||
                    await models.Cashier.findOne({ email });
 
       if (!user) {
@@ -2505,7 +2609,7 @@ app.post('/api/auth/cashier/login', async (req, res) => {
 
     const cashier = await models.Cashier.findOne({ email: email.toLowerCase().trim() })
       .populate('shopId', 'name location');
-    
+   
     if (!cashier || cashier.status !== 'active') {
       return res.status(404).json({
         success: false,
@@ -2581,7 +2685,7 @@ app.get('/api/transactions/combined', async (req, res) => {
     console.log('🚀 Processing enhanced combined transaction endpoint...', req.query);
 
     const startTime = Date.now();
-    
+   
     const filters = {
       startDate,
       endDate,
@@ -2711,69 +2815,69 @@ app.get('/api/transactions/metrics', async (req, res) => {
         count: transactionData.financialStats.totalSales,
         description: `${transactionData.financialStats.totalSales} transactions`
       },
-      
+     
       // 2. Credit Sales
       creditSales: {
         amount: transactionData.financialStats.creditSales,
         count: transactionData.financialStats.creditSalesCount,
         description: `${transactionData.financialStats.creditSalesCount} credit transactions`
       },
-      
+     
       // 3. Non-Credit Sales
       nonCreditSales: {
         amount: transactionData.financialStats.nonCreditSales,
         count: transactionData.financialStats.nonCreditSalesCount,
         description: `${transactionData.financialStats.nonCreditSalesCount} complete transactions`
       },
-      
+     
       // 4. Total Revenue
       totalRevenue: {
         amount: transactionData.financialStats.totalRevenue,
         description: 'From credit & non-credit sales'
       },
-      
+     
       // 5. Expenses
       expenses: {
         amount: transactionData.financialStats.totalExpenses,
         description: 'Total operational costs'
       },
-      
+     
       // 6. Gross Profit
       grossProfit: {
         amount: transactionData.financialStats.grossProfit,
         description: 'Revenue - Cost of Goods'
       },
-      
+     
       // 7. Net Profit
       netProfit: {
         amount: transactionData.financialStats.netProfit,
         description: 'After all expenses'
       },
-      
+     
       // 8. Cost of Goods Sold
       costOfGoodsSold: {
         amount: transactionData.financialStats.costOfGoodsSold,
         description: 'For credit & non-credit sales'
       },
-      
+     
       // 9. Total Mpesa/Bank
       totalMpesaBank: {
         amount: transactionData.financialStats.totalMpesaBank,
         description: 'Digital payments'
       },
-      
+     
       // 10. Total Cash
       totalCash: {
         amount: transactionData.financialStats.totalCash,
         description: 'Cash payments'
       },
-      
+     
       // 11. Outstanding Credit
       outstandingCredit: {
         amount: transactionData.financialStats.outstandingCredit,
         description: 'Unpaid credit balance'
       },
-      
+     
       // 12. Total Credit Given
       totalCreditGiven: {
         amount: transactionData.financialStats.totalCreditGiven,
@@ -2828,8 +2932,8 @@ app.get('/api/transactions/with-credits', async (req, res) => {
 
     // Enhance transactions with credit information
     const transactionsWithCredits = transactionData.salesWithProfit.map(transaction => {
-      const creditInfo = transactionData.credits.find(credit => 
-        credit.transactionId && credit.transactionId._id && 
+      const creditInfo = transactionData.credits.find(credit =>
+        credit.transactionId && credit.transactionId._id &&
         credit.transactionId._id.toString() === transaction._id.toString()
       );
 
@@ -2887,7 +2991,7 @@ app.get('/api/products', async (req, res) => {
     const products = await models.Product.find()
       .populate('shop', 'name location type')
       .sort({ createdAt: -1 });
-    
+   
     res.json({
       success: true,
       data: products,
@@ -2906,7 +3010,7 @@ app.get('/api/products', async (req, res) => {
 app.post('/api/products', async (req, res) => {
   try {
     const productData = req.body;
-    
+   
     // Auto-populate shop information if shop ID is provided
     if (productData.shop) {
       const shop = await models.Shop.findById(productData.shop);
@@ -2918,7 +3022,7 @@ app.post('/api/products', async (req, res) => {
 
     const product = new models.Product(productData);
     await product.save();
-    
+   
     await product.populate('shop', 'name location type');
 
     // Check stock level for new product
@@ -2929,7 +3033,7 @@ app.post('/api/products', async (req, res) => {
         shopName: product.shop?.name || product.shopName || 'Unknown Shop'
       }], alertType);
     }
-    
+   
     res.status(201).json({
       success: true,
       data: product,
@@ -2951,7 +3055,7 @@ app.put('/api/products/:id', async (req, res) => {
     const updateData = req.body;
 
     const oldProduct = await models.Product.findById(id);
-    
+   
     const product = await models.Product.findByIdAndUpdate(
       id,
       { ...updateData, updatedAt: new Date() },
@@ -2969,7 +3073,7 @@ app.put('/api/products/:id', async (req, res) => {
     const oldStock = oldProduct?.currentStock || 0;
     const newStock = product.currentStock || 0;
     const minStock = product.minStockLevel || 5;
-    
+   
     if (oldStock <= minStock && newStock > minStock) {
       stockMonitor.clearProductNotification(id);
       console.log(`✅ Stock updated to sufficient level for ${product.name}`);
@@ -3051,7 +3155,7 @@ app.post('/api/shops', async (req, res) => {
 
     const shop = new models.Shop(shopData);
     await shop.save();
-    
+   
     res.status(201).json({
       success: true,
       data: shop,
@@ -3133,7 +3237,7 @@ app.get('/api/cashiers', async (req, res) => {
     const cashiers = await models.Cashier.find()
       .populate('shopId', 'name location')
       .sort({ createdAt: -1 });
-    
+   
     res.json({
       success: true,
       data: cashiers,
@@ -3160,9 +3264,9 @@ app.post('/api/cashiers', async (req, res) => {
 
     const cashier = new models.Cashier(cashierData);
     await cashier.save();
-    
+   
     await cashier.populate('shopId', 'name location');
-    
+   
     res.status(201).json({
       success: true,
       data: cashier,
@@ -3178,28 +3282,52 @@ app.post('/api/cashiers', async (req, res) => {
   }
 });
 
+// PUT endpoint for cashiers (for full updates)
 app.put('/api/cashiers/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    // Hash password if provided
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
-    }
+    console.log('🔄 PUT request for cashier:', { id, updateData });
 
-    const cashier = await models.Cashier.findByIdAndUpdate(
-      id,
-      { ...updateData, updatedAt: new Date() },
-      { new: true, runValidators: true }
-    ).populate('shopId', 'name location');
-
-    if (!cashier) {
+    // Find the cashier first to ensure it exists
+    const existingCashier = await models.Cashier.findById(id);
+    if (!existingCashier) {
       return res.status(404).json({
         success: false,
         message: 'Cashier not found'
       });
     }
+
+    // Hash password if provided and not empty
+    if (updateData.password && updateData.password.trim() !== '') {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    } else {
+      // Remove password from update data if empty or not provided
+      delete updateData.password;
+    }
+
+    const cashier = await models.Cashier.findByIdAndUpdate(
+      id,
+      {
+        ...updateData,
+        updatedAt: new Date()
+      },
+      {
+        new: true,
+        runValidators: true,
+        context: 'query'
+      }
+    ).populate('shopId', 'name location');
+
+    if (!cashier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier not found after update'
+      });
+    }
+
+    console.log('✅ Cashier updated successfully via PUT:', cashier.name);
 
     res.json({
       success: true,
@@ -3207,7 +3335,23 @@ app.put('/api/cashiers/:id', async (req, res) => {
       message: 'Cashier updated successfully'
     });
   } catch (error) {
-    console.error('Error updating cashier:', error);
+    console.error('❌ Error updating cashier via PUT:', error);
+   
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: error.message
+      });
+    }
+   
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already exists'
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to update cashier',
@@ -3249,7 +3393,7 @@ app.get('/api/expenses', async (req, res) => {
     const expenses = await models.Expense.find()
       .populate('shop', 'name location')
       .sort({ date: -1 });
-    
+   
     res.json({
       success: true,
       data: expenses,
@@ -3268,7 +3412,7 @@ app.get('/api/expenses', async (req, res) => {
 app.post('/api/expenses', async (req, res) => {
   try {
     const expenseData = req.body;
-    
+   
     console.log('💰 Creating expense with shop validation:', {
       shop: expenseData.shop,
       shopId: expenseData.shopId
@@ -3295,7 +3439,7 @@ app.post('/api/expenses', async (req, res) => {
 
     const expense = new models.Expense(expenseData);
     await expense.save();
-    
+   
     await expense.populate('shop', 'name location');
 
     console.log('✅ Expense created successfully with shop:', {
@@ -3352,7 +3496,7 @@ app.delete('/api/expenses/:id', async (req, res) => {
 app.post('/api/credits', async (req, res) => {
   try {
     const creditData = req.body;
-    
+   
     console.log('💳 Creating credit record with deduplication check:', {
       transactionId: creditData.transactionId,
       customerName: creditData.customerName,
@@ -3361,10 +3505,10 @@ app.post('/api/credits', async (req, res) => {
 
     // Check for duplicate credit record
     if (creditData.transactionId) {
-      const existingCredit = await models.Credit.findOne({ 
-        transactionId: creditData.transactionId 
+      const existingCredit = await models.Credit.findOne({
+        transactionId: creditData.transactionId
       });
-      
+     
       if (existingCredit) {
         console.log('⚠️ Credit record already exists for transaction:', creditData.transactionId);
         return res.status(409).json({
@@ -3415,7 +3559,7 @@ app.post('/api/credits', async (req, res) => {
 
     const credit = new models.Credit(creditData);
     await credit.save();
-    
+   
     await credit.populate('transactionId');
     await credit.populate('shop', 'name location type');
     await credit.populate('cashierId', 'name email');
@@ -3450,7 +3594,7 @@ app.post('/api/credits', async (req, res) => {
 app.get('/api/credits', async (req, res) => {
   try {
     const { shopId, status, cashierId, startDate, endDate, includeTransactions = 'false' } = req.query;
-    
+   
     let filter = {};
     if (shopId && shopId !== 'all') {
       filter.$or = [
@@ -3466,7 +3610,7 @@ app.get('/api/credits', async (req, res) => {
         { cashierName: { $regex: cashierId, $options: 'i' } }
       ];
     }
-    
+   
     if (startDate && endDate) {
       filter.createdAt = {
         $gte: new Date(startDate),
@@ -3507,7 +3651,7 @@ app.get('/api/credits', async (req, res) => {
         totalCreditAmount: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.totalAmount), 0),
         totalPaid: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.amountPaid), 0),
         totalOutstanding: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.balanceDue), 0), // This now shows only the remaining balance
-        overdueCount: credits.filter(c => 
+        overdueCount: credits.filter(c =>
           c.dueDate && new Date(c.dueDate) < new Date() && c.balanceDue > 0
         ).length,
         totalUpfrontPayments: credits.reduce((sum, c) => sum + CalculationUtils.safeNumber(c.upfrontPaymentAmount), 0), // Total upfront payments
@@ -3614,7 +3758,7 @@ app.get('/api/credits/:id', async (req, res) => {
         .populate('shop', 'name location type')
         .populate('cashierId', 'name email')
         .populate('items.productId', 'name buyingPrice');
-      
+     
       credit = credit.toObject();
       credit.transactionDetails = transaction;
     }
@@ -3639,7 +3783,7 @@ app.get('/api/credits/:id', async (req, res) => {
 app.patch('/api/credits/:id/payment', async (req, res) => {
   try {
     const { amount, paymentMethod, recordedBy, cashierName, notes } = req.body;
-    
+   
     if (!amount || !paymentMethod) {
       return res.status(400).json({
         success: false,
@@ -3734,7 +3878,7 @@ app.get('/api/transactions/shop-performance/:shopId', async (req, res) => {
   try {
     const { shopId } = req.params;
     const { startDate, endDate } = req.query;
-    
+   
     const shop = await models.Shop.findById(shopId);
     if (!shop) {
       return res.status(404).json({
@@ -3786,7 +3930,7 @@ app.get('/api/debug/database', async (req, res) => {
       secureCodes: await models.SecureCode.countDocuments(),
       credits: await models.Credit.countDocuments()
     };
-    
+   
     res.json({
       success: true,
       counts,
@@ -3810,7 +3954,7 @@ app.get('/api/debug/database', async (req, res) => {
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
-    message: process.env.APP_NAME || 'Stanzo Shop Management API',
+    message: process.env.APP_NAME || 'Seridah Chemist Management API',
     version: process.env.APP_VERSION || '1.0.0',
     status: 'running',
     timestamp: new Date().toISOString(),
@@ -3839,18 +3983,97 @@ app.use('/api/*', (req, res) => {
   });
 });
 
+// PATCH endpoint for cashiers (for partial updates)
+app.patch('/api/cashiers/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = req.body;
+
+    console.log('🔄 PATCH request for cashier:', { id, updateData });
+
+    // Find the cashier first to ensure it exists
+    const existingCashier = await models.Cashier.findById(id);
+    if (!existingCashier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier not found'
+      });
+    }
+
+    // Hash password if provided and not empty
+    if (updateData.password && updateData.password.trim() !== '') {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    } else {
+      // Remove password from update data if empty or not provided
+      delete updateData.password;
+    }
+
+    // Update only the provided fields
+    const cashier = await models.Cashier.findByIdAndUpdate(
+      id,
+      {
+        ...updateData,
+        updatedAt: new Date()
+      },
+      {
+        new: true,
+        runValidators: true,
+        context: 'query'
+      }
+    ).populate('shopId', 'name location');
+
+    if (!cashier) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cashier not found after update'
+      });
+    }
+
+    console.log('✅ Cashier updated successfully via PATCH:', cashier.name);
+
+    res.json({
+      success: true,
+      data: cashier,
+      message: 'Cashier updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error updating cashier via PATCH:', error);
+   
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: error.message
+      });
+    }
+   
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email already exists'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update cashier',
+      error: error.message
+    });
+  }
+});
+
 // ==================== SERVER START ====================
 
 const startServer = async () => {
   try {
-    console.log('🚀 Starting Complete Stanzo Shop Management Server...');
-    console.log(`📋 App: ${process.env.APP_NAME || 'Stanzo Shop Management'}`);
-    
+    console.log('🚀 Starting Complete Seridah Chemist Management Server...');
+    console.log(`📋 App: ${process.env.APP_NAME || 'Seridah Chemist Management'}`);
+   
     await connectDB();
-    
+   
     // Start stock monitoring service (check every hour, send reminders every 6 hours)
     stockMonitor.startMonitoring(60); // Check every 60 minutes
-    
+   
     const server = app.listen(PORT, () => {
       console.log(`\n🎉 Complete Server Started Successfully!`);
       console.log('='.repeat(60));
@@ -3864,6 +4087,7 @@ const startServer = async () => {
       console.log(`💰 Immediate Revenue Tracking: ENABLED ✅`);
       console.log(`📈 Credit Display: BALANCE DUE ONLY ✅`);
       console.log(`💵 Upfront Payment Tracking: ENHANCED ✅`);
+      console.log(`⚡ Performance Optimizations: ENABLED ✅`);
       console.log('='.repeat(60));
     });
 
@@ -3888,4 +4112,4 @@ const startServer = async () => {
 // Start the server
 startServer();
 
-module.exports = app;
+module.exports = app;ve
